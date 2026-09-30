@@ -46,6 +46,7 @@ class Command(BaseCommand):
         if missing:
             workbook.close()
             raise CommandError(f"Configured source headers not found: {', '.join(missing)}")
+        source_headers = {field: _text(sheet.cell(header_row, col).value) for field, col in columns.items()}
         rows = []
         for row_index, values in enumerate(sheet.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
             mapped = {field: values[columns[field] - 1] if len(values) >= columns[field] else None
@@ -79,7 +80,7 @@ class Command(BaseCommand):
                 source_cells = {}
                 for field, source_header in config["headers"].items():
                     col = columns[field]
-                    source_cells[field] = {"cell": f"{get_column_letter(col)}{row_index}", "header": _text(sheet.cell(header_row, col).value),
+                    source_cells[field] = {"cell": f"{get_column_letter(col)}{row_index}", "header": source_headers[field],
                                             "raw_value": _text(mapped.get(field))}
                 Course.objects.create(
                     curriculum=curriculum, raw_code=raw_code, raw_name=raw_name, credits=credits,
