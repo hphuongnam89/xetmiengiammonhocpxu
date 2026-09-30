@@ -232,15 +232,20 @@ class RecommendationRun(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     submission = models.ForeignKey(Submission, on_delete=models.PROTECT, related_name="recommendation_runs")
     rule_version = models.ForeignKey(RuleVersion, on_delete=models.PROTECT)
+    curriculum_version = models.ForeignKey(CurriculumVersion, on_delete=models.PROTECT, null=True, blank=True)
     provider = models.CharField(max_length=50, blank=True)
     model_name = models.CharField(max_length=100, blank=True)
     status = models.CharField(max_length=30, default="PENDING")
+    is_current = models.BooleanField(default=False)
     prompt_hash = models.CharField(max_length=64, blank=True)
     idempotency_key = models.CharField(max_length=100, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=("submission", "idempotency_key"), name="uniq_submission_recommendation_key")]
+        constraints = [
+            models.UniqueConstraint(fields=("submission", "idempotency_key"), name="uniq_submission_recommendation_key"),
+            models.UniqueConstraint(fields=("submission",), condition=models.Q(is_current=True), name="uniq_current_recommendation_run"),
+        ]
 
     def clean(self):
         if self.rule_version_id and self.rule_version.status != RuleStatus.APPROVED:
@@ -340,3 +345,22 @@ class ExtractedField(models.Model):
     bounding_box = models.JSONField(null=True, blank=True)
     review_status = models.CharField(max_length=30, choices=FieldReviewStatus.choices, default=FieldReviewStatus.NEEDS_REVIEW)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ExtractedCourseRow(models.Model):
+    """An explicitly assembled course row; fields are never grouped heuristically."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    submission = models.ForeignKey(Submission, on_delete=models.PROTECT, related_name="extracted_course_rows")
+    source_course_name = models.ForeignKey(ExtractedField, on_delete=models.PROTECT, related_name="course_rows_as_name")
+    source_course_code = models.ForeignKey(ExtractedField, null=True, blank=True, on_delete=models.PROTECT, related_name="course_rows_as_code")
+    prior_grade = models.ForeignKey(ExtractedField, on_delete=models.PROTECT, related_name="course_rows_as_grade")
+    prior_credits = models.ForeignKey(ExtractedField, on_delete=models.PROTECT, related_name="course_rows_as_credits")
+    target_course = models.ForeignKey(Course, on_delete=models.PROTECT, related_name="evidence_rows")
+    created_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=("submission", "source_course_name", "prior_grade", "prior_credits", "target_course"),
+            name="uniq_submission_course_evidence_row",
+        )]

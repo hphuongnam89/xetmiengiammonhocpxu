@@ -1,6 +1,6 @@
 # Bàn giao phát triển — PXU xét miễn học phần
 
-Cập nhật: **30/09/2026**. Đối chiếu nền mã nguồn tại commit **`8c6dc62`**, bản sửa importer tại **`d335033`**. Lần bàn giao này bổ sung tài liệu và sửa lỗi đọc lại header sau khi đóng Excel; không thay quy tắc xét miễn học phần. Hướng dẫn chạy/nhập dữ liệu: [README.md](README.md).
+Cập nhật: **30/09/2026**. Nền importer tại `d335033`; bắt đầu phát triển tiếp từ `bdb1e30` trên nhánh `feat/ocr-to-recommendation`. Hướng dẫn chạy/nhập dữ liệu: [README.md](README.md).
 
 ## 1. Nhận việc trong buổi đầu
 
@@ -18,21 +18,23 @@ Các `STATUS.md` trong `app/docs/` ghi theo thời điểm từng phase, không 
 | --- | --- | --- |
 | Tài khoản/quyền | Session login, `UserProfile`, Sales/Teacher/Admin, kiểm tra owner/assignment ở các luồng chính | Mọi `is_staff=True` được coi là Admin nghiệp vụ; chưa có bộ test đầy đủ mọi endpoint/role |
 | Hồ sơ/tài liệu | Tạo hồ sơ, chọn teacher, upload, checksum, xem file qua view có kiểm tra quyền | Chưa có quét malware và triển khai private storage production |
-| OCR | pypdf text, Ollama ảnh/scan, raw evidence, màn hình sửa/xác nhận/thêm trường | Synchronous, scan hồ sơ tối đa 10 trang; lỗi bị gộp vào `NEEDS_REVIEW`; chưa nối OCR vào recommendation |
+| OCR | pypdf text, Ollama ảnh/scan, raw evidence, màn hình sửa/xác nhận/thêm trường; giáo viên có thể ghép tường minh các trường đã xác nhận thành dòng môn học | OCR đồng bộ, scan hồ sơ tối đa 10 trang; lỗi bị gộp vào `NEEDS_REVIEW`; không tự nhóm tên/điểm/tín chỉ từ các dòng khác nhau |
 | Danh mục/nguồn | Import 5 khung, giữ ô/dòng nguồn, staging lịch sử, OCR draft quy định | Không tự khôi phục qua Git; phần lớn nội dung học thuật cần rà/duyệt |
-| Đề xuất | API tạo run, idempotency key, lookup mapping `APPROVED`, lưu rationale/evidence | `items` do request gửi lên; chưa tự dựng từ OCR đã được xác nhận |
+| Đề xuất | API/UI tạo run từ dòng môn học đã ghép ở server, yêu cầu rule/curriculum đã duyệt, idempotency, mapping `APPROVED`, lưu snapshot field/document/curriculum | Cần chủ học thuật rà nguồn thật; evaluator chưa thực thi `RuleVersion.definition`; mapping chưa ràng buộc phiên bản curriculum; OCR không tự phát hiện đủ dòng bảng |
 | Xét duyệt | Teacher quyết định/override có lý do, audit và thông báo trong app | Cần kiểm tra trạng thái hồ sơ khi nhiều run, chạy lại hoặc bổ sung tài liệu |
 | Quản trị | Django Admin cho rule/mapping/curriculum/history; metrics và CSV tổng hợp | Chưa có gói triển khai, CI và nghiệm thu end-to-end production |
 
 ### Điểm cần hiểu trước khi sửa rule engine
 
-[`api/rule_engine.py`](app/backend/api/rule_engine.py) hiện chỉ kiểm tra evidence, trạng thái rule, điểm số `>=5`, tín chỉ `>0` và `content_match`. [`api/recommendations.py`](app/backend/api/recommendations.py) kiểm tra rule đã duyệt, nhưng **không thực thi nội dung `RuleVersion.definition` như một bộ luật cấu hình**. Mapping được tìm bằng cặp tên môn nguồn/mã môn đích; chưa ràng buộc đầy đủ theo phiên bản chương trình/thời hiệu. Caller truyền `content_match=True` nếu có mapping được duyệt, ngược lại truyền `None`, nên nhánh `PARTIAL` của evaluator chưa được luồng API này sử dụng cho trường hợp khớp một phần.
+[`api/rule_engine.py`](app/backend/api/rule_engine.py) hiện chỉ kiểm tra evidence, trạng thái rule, điểm số `>=5`, tín chỉ `>0` và `content_match`. API hiện đã dựng `items` từ các dòng OCR xác nhận phía server; nó không nhận điểm/evidence hay `content_match` của caller. Tuy vậy, evaluator **không thực thi nội dung `RuleVersion.definition` như một bộ luật cấu hình**. Mapping phải khớp tên/mã môn nguồn với mã môn đích và có xác nhận học thuật, nhưng chưa ràng buộc đầy đủ theo phiên bản chương trình/thời hiệu. Khi mapping thiếu hoặc nhập nhằng, kết quả cần Teacher review; nhánh `PARTIAL` chưa được tự suy ra từ nội dung mapping.
 
 Vì vậy, “có rule `APPROVED`” chưa chứng minh đủ điều kiện tính kết quả học thuật. Precedent lịch sử được duyệt hiện chỉ thêm thông tin tổng hợp, không thay quyết định của rule engine. Không suy diễn threshold/mapping/ngoại lệ từ code đơn giản này thành quy định của trường.
 
 ## 3. Các bước hoàn thiện theo thứ tự
 
 ### A. Nối OCR đã xác nhận → đề xuất học phần → màn hình xét
+
+**Tiến độ 30/09/2026:** Đã triển khai nền luồng ở nhánh `feat/ocr-to-recommendation`: mô hình `ExtractedCourseRow`; ghép thủ công các field `HUMAN_ACCEPTED` cùng extraction run; chọn môn đích trong curriculum/course đã duyệt; tạo run từ row ID phía server; lưu giá trị field gốc/đã xác nhận, evidence, trang, checksum tài liệu, mapping và curriculum; giao diện Sales tạo/xem run và Teacher đã giao ghi quyết định. Một run được đánh dấu hiện hành; run mới thay thế run hiện hành và API từ chối quyết định run cũ. Đã có test API/UI với fixture học thuật tổng hợp. **Đầu việc A chưa nghiệm thu đầy đủ:** chưa có nguồn rule/mapping thật được chủ học thuật duyệt trên database dùng được; OCR bảng vẫn cần người rà/ghép thủ công; cần UAT phân quyền nhiều tài khoản, chạy lại sau khi thay tài liệu, và kiểm tra deployment.
 
 **Bắt đầu tại:** [`api/web.py`](app/backend/api/web.py), [`api/extraction.py`](app/backend/api/extraction.py), [`api/recommendations.py`](app/backend/api/recommendations.py), [`reviews/models.py`](app/backend/reviews/models.py), các template trong `app/backend/reviews/templates/reviews/`.
 
@@ -135,6 +137,7 @@ Chạy trên dữ liệu giả hoặc bộ dữ liệu được phép kiểm th�
 | `makemigrations --check --dry-run` | Không có thay đổi migration |
 | `pytest -q` | Baseline 19/19; sau sửa importer có 20/20 đạt. Ollama trỏ tới cổng không chạy dịch vụ; media test của lượt cuối dùng thư mục tạm |
 | Regression importer | Test tái hiện lỗi `Attempt to use ZIP archive that was already closed` trước sửa và đạt sau sửa; kiểm tra header/cell/raw value, tín chỉ công thức không bị đoán, dry-run và import lặp |
+| Nối OCR → recommendation → teacher review (nhánh hiện tại) | 28 test đạt trên Python 3.12.14/Django 5.2.17; UI flow test dùng dữ liệu curriculum/mapping/rule tổng hợp. Migrate `0010`–`0012`, check và migration check sạch. Chưa nghiệm thu bằng nguồn học thuật thật hoặc browser UAT nhiều role |
 | Import 5 curriculum trên clone tạm sau sửa | 5 khung DRAFT, 380 dòng nguồn; preview activation đúng 301 dòng mã/tên và 79 dòng cấu trúc; không kích hoạt dữ liệu thật |
 | Preview lịch sử | 16 sheet khớp, 107 bỏ qua, 155 dòng (132 FULL, 23 PARTIAL); chưa ghi/duyệt lịch sử |
 | Preview PDF quy định | Tìm đủ 3 file với 14/2/3 trang; chưa gọi OCR. pypdf cảnh báo trùng metadata `/Info` ở nguồn nhưng kiểm tra page count kết thúc thành công |

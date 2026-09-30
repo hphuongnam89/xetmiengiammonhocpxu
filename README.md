@@ -96,7 +96,9 @@ Khi tạo superuser, tự đặt tên/mật khẩu; validator hiện yêu cầu 
 6. Mở màn hình OCR của tài liệu: `/app/documents/<document_uuid>/extraction/`. Sales phụ trách hoặc Admin có thể chạy OCR; người có quyền có thể đối chiếu/sửa/xác nhận trường trích xuất. Teacher chỉ truy cập hồ sơ được giao.
 7. Thử bằng hai tài khoản Sales và hai Teacher để kiểm tra không xem được hồ sơ ngoài quyền. Xem danh sách nghiệm thu đầy đủ trong [HANDOVER.md](HANDOVER.md).
 
-Sau khi có bản ghi đề xuất, giảng viên xét tại `/app/submissions/<submission_uuid>/review/`. Hiện chưa có luồng giao diện tự động nối OCR đã xác nhận thành đề xuất; màn hình xét có thể chưa có học phần. Không coi đó là lỗi cài đặt và không tự tạo quyết định học thuật để lấp dữ liệu.
+Giảng viên mở `/app/documents/<document_uuid>/extraction/`, đối chiếu và xác nhận từng trường. Sau đó ghép tường minh tên môn, điểm, tín chỉ (và mã môn nếu có) từ cùng lần OCR, chọn môn đích trong một curriculum đã duyệt. Không có bước ghép tự động giữa các trường rời. Sales phụ trách/Admin mở `/app/submissions/<submission_uuid>/review/` để chọn các dòng đã ghép, rule đã được xác nhận về học thuật và phiên bản curriculum đích, rồi tạo đề xuất. Giảng viên được giao xem nguồn/căn cứ và ghi quyết định cuối tại cùng màn hình.
+
+Nếu chưa có curriculum/rule/mapping đã duyệt, hệ thống không tạo đề xuất như thể dữ liệu đó đã được duyệt. Dữ liệu rule và mapping thực tế trong repo vẫn cần chủ học thuật xác minh; deterministic evaluator hiện chưa thực thi đầy đủ nội dung rule và mapping chưa gắn chặt với phiên bản curriculum.
 
 ## 4. Nhập lại dữ liệu trên database mới
 

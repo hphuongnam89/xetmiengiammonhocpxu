@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.core.files.storage import default_storage
 from django.http import FileResponse, HttpResponseForbidden
@@ -22,6 +23,12 @@ from reviews.models import (
     ExtractedField,
     ExtractionRun,
     FieldReviewStatus,
+    Course,
+    CurriculumVersion,
+    CurriculumVersionStatus,
+    ExtractedCourseRow,
+    RuleStatus,
+    RuleVersion,
 )
 
 from .permissions import user_role
@@ -148,43 +155,86 @@ def mark_notification_read(request, notification_id):
 def review_submission(request, submission_id):
     role = user_role(request.user)
     submission = get_object_or_404(Submission.objects.select_related("student", "owner", "teacher"), pk=submission_id)
-    if role != Role.ADMIN and not (role == Role.TEACHER and submission.teacher_id == request.user.id):
+    can_review = role == Role.ADMIN or (role == Role.TEACHER and submission.teacher_id == request.user.id)
+    can_create = role == Role.ADMIN or (role == Role.SALES and submission.owner_id == request.user.id)
+    if not (can_review or can_create):
         messages.error(request, "Bạn không có quyền xem hồ sơ này.")
         return redirect("dashboard")
-    items = RecommendationItem.objects.filter(run__submission=submission).select_related("run").prefetch_related("teacher_decision")
+    current_run = submission.recommendation_runs.filter(is_current=True).select_related("rule_version", "curriculum_version").first()
+    items = RecommendationItem.objects.filter(run=current_run).select_related("run").prefetch_related("teacher_decision") if current_run else RecommendationItem.objects.none()
     if request.method == "POST":
-        item = get_object_or_404(items, pk=request.POST.get("item_id"))
-        decision = request.POST.get("decision", "")
-        reason = request.POST.get("reason", "").strip()
-        if decision not in {"FULL", "PARTIAL", "NOT_ELIGIBLE"}:
-            messages.error(request, "Lựa chọn quyết định không hợp lệ.")
-        elif decision != item.recommendation and not reason:
-            messages.error(request, "Cần ghi lý do khi điều chỉnh đề xuất AI.")
+        if request.POST.get("action") == "create_recommendation":
+            if not can_create:
+                return HttpResponseForbidden("Chỉ Sales phụ trách hoặc Admin được tạo đề xuất.")
+            from .recommendation_service import RecommendationInputError, create_recommendation_run
+            try:
+                rule = RuleVersion.objects.get(pk=request.POST.get("rule_version_id"), status=RuleStatus.APPROVED)
+                curriculum = CurriculumVersion.objects.get(pk=request.POST.get("curriculum_version_id"))
+                run, created = create_recommendation_run(
+                    submission=submission, actor=request.user, rule=rule, curriculum=curriculum,
+                    course_row_ids=request.POST.getlist("course_row_ids"),
+                    idempotency_key=request.POST.get("idempotency_key", "").strip(),
+                )
+            except (RuleVersion.DoesNotExist, CurriculumVersion.DoesNotExist, ValidationError, ValueError, TypeError) as exc:
+                messages.error(request, str(exc) or "Chưa chọn rule và chương trình hợp lệ.")
+            else:
+                messages.success(request, "Đề xuất đã được tạo." if created else "Đề xuất này đã được tạo trước đó.")
+                return redirect("review-submission", submission_id=submission.id)
+        elif request.POST.get("action") == "teacher_decision":
+            if not can_review:
+                return HttpResponseForbidden("Chỉ giảng viên được giao hoặc Admin được ghi quyết định.")
+            item = get_object_or_404(items, pk=request.POST.get("item_id"))
+            decision = request.POST.get("decision", "")
+            reason = request.POST.get("reason", "").strip()
+            if decision not in {"FULL", "PARTIAL", "NOT_ELIGIBLE"}:
+                messages.error(request, "Lựa chọn quyết định không hợp lệ.")
+            elif decision != item.recommendation and not reason:
+                messages.error(request, "Cần ghi lý do khi điều chỉnh đề xuất AI.")
+            else:
+                TeacherDecision.objects.update_or_create(
+                    item=item,
+                    defaults={"teacher": request.user, "decision": decision, "reason": reason},
+                )
+                AuditEvent.objects.create(
+                    actor=request.user,
+                    action="TEACHER_DECISION",
+                    entity_type="RecommendationItem",
+                    entity_id=str(item.id),
+                    payload={"decision": decision, "overrode_recommendation": decision != item.recommendation},
+                )
+                Notification.objects.create(
+                    recipient=submission.owner,
+                    submission=submission,
+                    event_type="TEACHER_DECISION",
+                    message=f"Giáo viên đã cập nhật kết quả môn {item.course_code}.",
+                )
+                if not items.filter(teacher_decision__isnull=True).exists():
+                    submission.status = SubmissionStatus.COMPLETED
+                    submission.save(update_fields=["status", "updated_at"])
+                messages.success(request, "Đã lưu quyết định môn học.")
+                return redirect("review-submission", submission_id=submission.id)
         else:
-            TeacherDecision.objects.update_or_create(
-                item=item,
-                defaults={"teacher": request.user, "decision": decision, "reason": reason},
-            )
-            AuditEvent.objects.create(
-                actor=request.user,
-                action="TEACHER_DECISION",
-                entity_type="RecommendationItem",
-                entity_id=str(item.id),
-                payload={"decision": decision, "overrode_recommendation": decision != item.recommendation},
-            )
-            Notification.objects.create(
-                recipient=submission.owner,
-                submission=submission,
-                event_type="TEACHER_DECISION",
-                message=f"Giáo viên đã cập nhật kết quả môn {item.course_code}.",
-            )
-            if not items.filter(teacher_decision__isnull=True).exists():
-                submission.status = SubmissionStatus.COMPLETED
-                submission.save(update_fields=["status", "updated_at"])
-            messages.success(request, "Đã lưu quyết định môn học.")
-            return redirect("review-submission", submission_id=submission.id)
+            return HttpResponseForbidden("Thao tác không hợp lệ.")
     documents = DocumentVersion.objects.filter(submission=submission)
-    return render(request, "reviews/review.html", {"submission": submission, "items": items, "documents": documents})
+    rows = ExtractedCourseRow.objects.filter(submission=submission).select_related(
+        "source_course_name__run__document", "prior_grade", "prior_credits",
+        "target_course__curriculum", "target_course__curriculum__program")
+    curricula = CurriculumVersion.objects.filter(status=CurriculumVersionStatus.APPROVED).select_related("program")
+    if submission.student.program_code:
+        curricula = curricula.filter(program_id__iexact=submission.student.program_code)
+    rules = []
+    for rule in RuleVersion.objects.filter(status=RuleStatus.APPROVED):
+        definition = rule.definition if isinstance(rule.definition, dict) else {}
+        review = definition.get("academic_owner_review") or {}
+        if (isinstance(review, dict) and isinstance(definition.get("rules"), list) and definition.get("rules")
+                and review.get("verified") is True and review.get("reviewer") and review.get("note")):
+            rules.append(rule)
+    return render(request, "reviews/review.html", {
+        "submission": submission, "items": items, "documents": documents, "role": role,
+        "current_run": current_run, "rows": rows, "curricula": curricula, "rules": rules,
+        "can_create_recommendation": can_create,
+        "idempotency_key": uuid.uuid4(),
+    })
 
 
 def _can_access_document(user, document):
@@ -260,7 +310,7 @@ def review_extraction(request, document_id):
             normalized = request.POST.get("normalized_value", "").strip()
             evidence = request.POST.get("evidence_text", "").strip()
             raw_page = request.POST.get("page_number", "").strip()
-            allowed_fields = {"student_name", "school_name", "program", "course_name", "credits", "grade", "document_date"}
+            allowed_fields = {"student_name", "school_name", "program", "course_name", "course_code", "credits", "grade", "document_date"}
             run = ExtractionRun.objects.filter(document=document).order_by("-created_at").first()
             try:
                 page_number = int(raw_page) if raw_page else None
@@ -285,7 +335,57 @@ def review_extraction(request, document_id):
                 )
                 messages.success(request, "Đã thêm trường do giáo viên đối chiếu từ tài liệu gốc.")
                 return redirect("review-extraction", document_id=document.id)
+        elif action == "assemble_course_row":
+            if role not in {Role.ADMIN, Role.TEACHER}:
+                return HttpResponseForbidden("Chỉ giáo viên phụ trách hoặc Admin được ghép dòng môn học.")
+            from .recommendation_service import RecommendationInputError, create_course_row
+            try:
+                name_field = ExtractedField.objects.select_related("run__document").get(
+                    pk=request.POST.get("course_name_field"), run__document=document)
+                grade_field = ExtractedField.objects.select_related("run__document").get(
+                    pk=request.POST.get("grade_field"), run__document=document)
+                credits_field = ExtractedField.objects.select_related("run__document").get(
+                    pk=request.POST.get("credits_field"), run__document=document)
+                code_id = request.POST.get("course_code_field", "").strip()
+                code_field = ExtractedField.objects.select_related("run__document").get(
+                    pk=code_id, run__document=document) if code_id else None
+                target_course = Course.objects.select_related("curriculum").get(pk=request.POST.get("target_course"))
+            except (ExtractedField.DoesNotExist, Course.DoesNotExist, ValidationError, ValueError, TypeError):
+                messages.error(request, "Chọn các trường OCR và môn đích hợp lệ.")
+            else:
+                try:
+                    row = create_course_row(
+                        submission=document.submission, actor=request.user,
+                        name_field=name_field, grade_field=grade_field,
+                        credits_field=credits_field, code_field=code_field,
+                        target_course=target_course,
+                    )
+                except RecommendationInputError as exc:
+                    messages.error(request, str(exc))
+                else:
+                    messages.success(request, f"Đã lưu dòng môn học đã đối chiếu ({row.target_course.raw_code}).")
+                    return redirect("review-extraction", document_id=document.id)
         else:
             return HttpResponseForbidden("Thao tác không hợp lệ.")
     runs = ExtractionRun.objects.filter(document=document).prefetch_related("fields").order_by("-created_at")
-    return render(request, "reviews/extraction_review.html", {"document": document, "runs": runs, "role": role})
+    latest_run = runs.first()
+    confirmed = latest_run.fields.filter(review_status=FieldReviewStatus.HUMAN_ACCEPTED) if latest_run else ExtractedField.objects.none()
+    program_code = document.submission.student.program_code
+    target_courses = Course.objects.filter(
+        curriculum__status=CurriculumVersionStatus.APPROVED,
+        review_status="APPROVED",
+        raw_code__gt="",
+    ).select_related("curriculum", "curriculum__program")
+    if program_code:
+        target_courses = target_courses.filter(curriculum__program_id__iexact=program_code)
+    existing_rows = ExtractedCourseRow.objects.filter(submission=document.submission).select_related(
+        "source_course_name__run__document", "target_course", "target_course__curriculum")
+    return render(request, "reviews/extraction_review.html", {
+        "document": document, "runs": runs, "role": role, "latest_run": latest_run,
+        "confirmed_course_names": confirmed.filter(field_key="course_name"),
+        "confirmed_course_codes": confirmed.filter(field_key="course_code"),
+        "confirmed_grades": confirmed.filter(field_key="grade"),
+        "confirmed_credits": confirmed.filter(field_key="credits"),
+        "target_courses": target_courses,
+        "existing_rows": existing_rows,
+    })

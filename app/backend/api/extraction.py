@@ -63,7 +63,7 @@ def extract_document(document):
         run.raw_text = "\n".join(page["raw_text"] for page in pages)
         run.status = ExtractionStatus.NEEDS_REVIEW
         run.save(update_fields=["engine", "model_version", "raw_text", "status"])
-        allowed_fields = {"student_name", "school_name", "program", "course_name", "credits", "grade", "document_date"}
+        allowed_fields = {"student_name", "school_name", "program", "course_name", "course_code", "credits", "grade", "document_date"}
         for page in pages:
             for field in page["fields"] if isinstance(page["fields"], list) else []:
                 key = str(field.get("field_key", ""))[:100]
