@@ -1,0 +1,9 @@
+source_id,representative_sheet,classification,observed_columns,import_policy
+SRC-XLSX-001,16. Lê Quang Nhật,student_data,"STT; Mã HP; Phiên bản; Tên học phần; Số tín chỉ; Số giờ",exclude_from_core_curriculum
+SRC-XLSX-002,1.Khung CTDT,curriculum,"Số TT; Mã HP; Tên học phần; Số tín chỉ; Loại HP; Số tiết; Tiên quyết; Hình thức thi",import_after_review
+SRC-XLSX-003,CTDT Ngôn Ngữ Trung.,curriculum,"STT; Mã HP; Phiên bản; Tên học phần; Số tín chỉ; Số giờ; prerequisite; assessment",import_after_review
+SRC-XLSX-004,CTDT ngành Ngôn Ngữ Anh,curriculum,"STT; Mã HP; Tên học phần; Số tín chỉ; degree-holder field; assessment",import_after_review
+SRC-XLSX-004,0. Khung xét mẫu,sample,"STT; Mã HP; Tên học phần; Công nhận hoàn toàn; Công nhận một phần",exclude_until_classified
+SRC-XLSX-005,CTĐT ĐHKTS (MỚI),curriculum_new,"STT; Mã HP; Phiên bản; Tên học phần; Số tín chỉ; Số giờ",import_after_version_review
+SRC-XLSX-006,Khung cấu trúc,curriculum_structure,"STT; Mã HP; Phiên bản; Tên học phần; Số tín chỉ; Số giờ; điều kiện",import_after_review
+SRC-XLSX-006,Mẫu,sample,"STT; Mã HP; Tên học phần; Số tín chỉ; điều kiện",exclude_until_classified

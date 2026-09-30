@@ -1,0 +1,7 @@
+source_id,file_name,sheets,primary_role,secondary_role,automated_import_status
+SRC-XLSX-001,16 SV KHUNG CŨ XÉT LẠI KHUNG MỚI_QTKD K2.xlsx,123,historical_review,student_case_comparison,16_sheets_staged_pending_107_skipped
+SRC-XLSX-002,5. Khung CTĐT QTKD-NBS-29042024.xlsx,361,curriculum,QTKD_student_reviews,not_imported
+SRC-XLSX-003,CTDT Ngành Ngôn Ngữ Trung_NBS.xlsx,242,curriculum,Chinese_student_reviews,not_imported
+SRC-XLSX-004,CTDT Ngôn ngữ Anh_NBS.xlsx,414,curriculum,English_student_reviews,not_imported
+SRC-XLSX-005,NBS_CT đồ họa kỹ thuật số.xlsx,284,curriculum,Digital_Graphic_Design_student_reviews,not_imported
+SRC-XLSX-006,NBS_Khung CTDT Du Lịch.xlsx,30,curriculum,Tourism_student_reviews,not_imported

@@ -1,0 +1,35 @@
+[tool.poetry]
+name = "course-exemption-review"
+version = "0.1.0"
+description = "Django REST backend for course-exemption review"
+requires-python = ">=3.12"
+packages = [
+    { include = "config" },
+    { include = "reviews" },
+]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+django = "^5.0"
+djangorestframework = "^3.15"
+psycopg = { version = "^3.2", extras = ["binary"] }
+django-cors-headers = "^4.3"
+celery = "^5.4"
+redis = "^5.0"
+python-dotenv = "^1.0"
+Pillow = "^10.4"
+pypdf = "^5.0"
+openpyxl = "^3.1"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.3"
+pytest-django = "^4.9"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+python_files = ["test_*.py", "*_test.py", "tests.py"]
+addopts = "-ra"

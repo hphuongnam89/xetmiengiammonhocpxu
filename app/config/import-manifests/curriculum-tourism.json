@@ -1,0 +1,14 @@
+{
+  "program_code": "INTERNAL-DL",
+  "program_name": "Du lịch",
+  "sheet": "Khung cấu trúc",
+  "version_label": "Khung chương trình đào tạo năm 2026 theo tiêu đề nguồn",
+  "header_row": 3,
+  "headers": {
+    "course_code": "Mã HP",
+    "course_name": "Tên học phần",
+    "credits": "Số tín chỉ",
+    "course_type": "Loại học phần",
+    "assessment": "Hình thức đánh giá"
+  }
+}

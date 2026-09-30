@@ -1,0 +1,11 @@
+[
+  {"id":"GRADE-001","rule":"RULE-GRADE-001","input":{"grade":5.0},"expected":"eligible_for_consideration"},
+  {"id":"GRADE-002","rule":"RULE-GRADE-001","input":{"grade":4.99},"expected":"not_eligible_by_grade"},
+  {"id":"GRADE-003","rule":"RULE-GRADE-001","input":{"letter_grade":"D+"},"expected":"eligible_for_consideration"},
+  {"id":"PARTIAL-001","rule":"RULE-PARTIAL-001","input":{"coverage":"partial"},"expected":"partial_recognition_and_supplement_required"},
+  {"id":"CAP-001","rule":"RULE-CREDIT-CAP-001","input":{"recognized_credits":"exactly_50_percent","excluded_courses":true},"expected":"requires_cap_check"},
+  {"id":"CONVERT-001","rule":"RULE-GRADE-CONVERSION-001","input":{"score":5.0},"expected":{"letter":"D+","scale4":1.5}},
+  {"id":"CONVERT-002","rule":"RULE-GRADE-CONVERSION-001","input":{"score":9.5},"expected":{"letter":"A+","scale4":4.0}},
+  {"id":"ENGLISH-CERT-001","rule":"RULE-ENGLISH-CERTIFICATE-001","input":{"age_months":24},"expected":"needs_boundary_confirmation"},
+  {"id":"PENDING-001","rule":"RULE-DETAILED-MAPPINGS-001","input":{"mapping":"political_theory"},"expected":"NEEDS_HUMAN_CONFIRMATION"}
+]

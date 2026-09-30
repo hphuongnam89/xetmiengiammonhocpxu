@@ -1,0 +1,13 @@
+{
+  "program_code": "INTERNAL-DHKTS",
+  "program_name": "Đồ họa kỹ thuật số",
+  "sheet": "CTĐT ĐHKTS (MỚI)",
+  "version_label": "Phiên bản được sheet đánh dấu MỚI",
+  "header_row": 2,
+  "headers": {
+    "course_code": "Mã HP",
+    "course_name": "Tên học phần",
+    "credits": "Số tín chỉ",
+    "assessment": "Hình thức đánh giá"
+  }
+}

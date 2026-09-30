@@ -1,0 +1,13 @@
+{
+  "program_code": "INTERNAL-NNA",
+  "program_name": "Ngôn ngữ Anh",
+  "sheet": "CTDT ngành Ngôn Ngữ Anh",
+  "version_label": "Khung CTĐT theo sheet CTDT ngành Ngôn Ngữ Anh",
+  "header_row": 2,
+  "headers": {
+    "course_code": "Mã HP",
+    "course_name": "Tên học phần",
+    "credits": "Số tín chỉ",
+    "assessment": "Hình thức đánh giá"
+  }
+}

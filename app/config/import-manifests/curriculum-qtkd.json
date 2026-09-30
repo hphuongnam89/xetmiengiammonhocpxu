@@ -1,0 +1,14 @@
+{
+  "program_code": "INTERNAL-QTKD",
+  "program_name": "Quản trị kinh doanh",
+  "sheet": "1.Khung CTDT",
+  "version_label": "Nguồn 5. Khung CTĐT QTKD-NBS-29042024",
+  "header_row": 2,
+  "headers": {
+    "course_code": "Mã HP",
+    "course_name": "Tên học phần",
+    "credits": "Số tín chỉ",
+    "course_type": "Loại HP",
+    "assessment": "Hình thức thi"
+  }
+}

@@ -1,0 +1,11 @@
+rule_id,domain,status,source_document,source_pages,automatable_now,required_owner_action
+RULE-COMPARE-001,comparison,active_candidate,017/2024/QĐ-PXU-NBS,4,no,confirm interpretation
+RULE-GRADE-001,grade,active_candidate,017/2024/QĐ-PXU-NBS,4,yes,approve threshold
+RULE-CERTIFICATE-001,certificate,active_candidate,017/2024/QĐ-PXU-NBS,3-4,partial,confirm certificate policy
+RULE-PARTIAL-001,partial_recognition,active_candidate,017/2024/QĐ-PXU-NBS,4,partial,define course-level representation
+RULE-CREDIT-CAP-001,credit_limit,active_candidate,017/2024/QĐ-PXU-NBS,5,partial,confirm denominator and exclusions
+RULE-UNIT-001,unit_conversion,active_candidate,017/2024/QĐ-PXU-NBS,5,no,transcribe table and approve
+RULE-GRADE-CONVERSION-001,grade_conversion,active_candidate,017/2024/QĐ-PXU-NBS,6,yes,approve boundary tests
+RULE-ENGLISH-CREDITS-001,english,needs_human_confirmation,017/2024/QĐ-PXU-NBS,10,no,verify alternative-unit wording
+RULE-ENGLISH-CERTIFICATE-001,english_certificate,active_candidate,017/2024/QĐ-PXU-NBS,11-12,partial,verify all certificate bands
+RULE-DETAILED-MAPPINGS-001,special_mappings,needs_human_confirmation,017/2024/QĐ-PXU-NBS,6-13,no,manually transcribe tables

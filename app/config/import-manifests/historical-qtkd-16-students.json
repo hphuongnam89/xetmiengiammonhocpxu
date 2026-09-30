@@ -1,0 +1,11 @@
+{
+  "program_code": "INTERNAL-QTKD",
+  "header_row": 2,
+  "data_start_row": 4,
+  "headers": {
+    "course_code": "Mã HP",
+    "course_name": "Tên học phần",
+    "full_credit": "Công nhận hoàn toàn",
+    "partial_credit": "Công nhận 1 phần"
+  }
+}

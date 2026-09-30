@@ -1,0 +1,4 @@
+source_id,file_name,pages,classification,extraction_status,required_follow_up
+SRC-PDF-001,017_2024_QĐ-PXU-NBS-Quy định xét miễn môn và chuyển đổi tín chỉ.pdf,14,authoritative_rule,scanned,OCR plus human clause verification
+SRC-PDF-002,Hướng dẫn hồ sơ xét tuyển xét nhanh khối lượng miễn trừ học phần và thời gian đào tạo - NBS_0001.pdf,2,operational_guidance,scanned,OCR plus human table verification
+SRC-PDF-003,QD-061 thanh lap To chuyen mon xet CNHPCDTC cho xet tuyen dau vao.pdf,3,governance,scanned,OCR plus human signature/date verification

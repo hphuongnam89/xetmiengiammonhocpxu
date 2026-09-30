@@ -1,0 +1,44 @@
+version: "2026-09-30-draft"
+status: draft
+source_policy: "Rules require source evidence and human approval before production activation."
+rules:
+  - id: RULE-COMPARE-001
+    status: active_candidate
+    statement: "Compare learning outcomes, content, learning volume, assessment method, and quality conditions against the current curriculum."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "4"}
+  - id: RULE-GRADE-001
+    status: active_candidate
+    statement: "A prior course may be considered when its result is at least 5 on a 10-point scale or D+ when only letter grades are shown."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "4"}
+  - id: RULE-CERTIFICATE-001
+    status: active_candidate
+    statement: "Certificates used for recognition must remain valid under the applicable rules."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "3-4"}
+  - id: RULE-PARTIAL-001
+    status: active_candidate
+    statement: "When prior learning covers only part of a current course, recognize only the supported portion; missing knowledge must be supplemented and assessed."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "4"}
+  - id: RULE-CREDIT-CAP-001
+    status: active_candidate
+    statement: "Total recognized learning must not exceed 50 percent of the curriculum, excluding physical education and national defense education."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "5"}
+  - id: RULE-UNIT-001
+    status: active_candidate
+    statement: "The source defines conversion relationships for DVTHT, hours, and credits; use the published table rather than an inferred conversion."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "5"}
+  - id: RULE-GRADE-CONVERSION-001
+    status: active_candidate
+    statement: "Use the published 10-point to letter/4-point conversion table."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "6"}
+  - id: RULE-ENGLISH-CREDITS-001
+    status: needs_human_confirmation
+    statement: "The source table maps prior English learning volume to English 1, English 1-2, or English 1-3 using credit/DVTHT bands."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "10"}
+  - id: RULE-ENGLISH-CERTIFICATE-001
+    status: active_candidate
+    statement: "International English certificates used for recognition must be valid within the source-defined 24-month period."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "11-12"}
+  - id: RULE-DETAILED-MAPPINGS-001
+    status: needs_human_confirmation
+    statement: "Detailed political theory, law, national defense, physical education, English certificate, and IT certificate mappings require manual transcription and approval from the source tables."
+    source: {document: "017/2024/QĐ-PXU-NBS", pages: "6-13"}

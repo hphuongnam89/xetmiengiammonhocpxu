@@ -1,0 +1,10 @@
+source_id,relative_path,format,bytes,unit_count,classification,mutable,notes
+SRC-XLSX-001,"12. XÉT MIỄN MÔN/16 SV KHUNG CŨ XÉT LẠI KHUNG MỚI_QTKD K2.xlsx",xlsx,3159340,123,historical_review,false,"Historical QTKD review workbook"
+SRC-XLSX-002,"12. XÉT MIỄN MÔN/5. Khung CTĐT QTKD-NBS-29042024.xlsx",xlsx,8407844,361,curriculum_and_historical_review,false,"QTKD curriculum and student sheets"
+SRC-XLSX-003,"12. XÉT MIỄN MÔN/CTDT Ngành Ngôn Ngữ Trung_NBS.xlsx",xlsx,9460112,242,curriculum_and_historical_review,false,"Chinese Language curriculum and student sheets"
+SRC-XLSX-004,"12. XÉT MIỄN MÔN/CTDT Ngôn ngữ Anh_NBS.xlsx",xlsx,17112013,414,curriculum_and_historical_review,false,"English Language curriculum and student sheets"
+SRC-XLSX-005,"12. XÉT MIỄN MÔN/NBS_CT đồ họa kỹ thuật số.xlsx",xlsx,11688201,284,curriculum_and_historical_review,false,"Digital Graphic Design curriculum and student sheets"
+SRC-XLSX-006,"12. XÉT MIỄN MÔN/NBS_Khung CTDT Du Lịch.xlsx",xlsx,596352,30,curriculum_and_historical_review,false,"Tourism curriculum and student sheets"
+SRC-PDF-001,"12. XÉT MIỄN MÔN/Văn bản quy định/017_2024_QĐ-PXU-NBS-Quy định xét miễn môn và chuyển đổi tín chỉ.pdf",pdf,4931154,14,authoritative_rule,false,"Scanned decision; visual/OCR review required"
+SRC-PDF-002,"12. XÉT MIỄN MÔN/Văn bản quy định/Hướng dẫn hồ sơ xét tuyển xét nhanh khối lượng miễn trừ học phần và thời gian đào tạo - NBS_0001.pdf",pdf,993382,2,operational_guidance,false,"Scanned internal guidance; visual/OCR review required"
+SRC-PDF-003,"12. XÉT MIỄN MÔN/Văn bản quy định/QD-061 thanh lap To chuyen mon xet CNHPCDTC cho xet tuyen dau vao.pdf",pdf,1335862,3,governance,false,"Scanned committee decision; visual/OCR review required"

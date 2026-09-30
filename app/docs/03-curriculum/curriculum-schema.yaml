@@ -1,0 +1,20 @@
+schema_version: "2026-09-30-draft"
+entities:
+  program:
+    required: [program_code, program_name, source_evidence_id]
+  curriculum_version:
+    required: [version_id, program_code, raw_title, status, source_evidence_id]
+    nullable: [effective_from, effective_to]
+  curriculum_section:
+    required: [section_id, version_id, raw_label, section_order, source_evidence_id]
+  course:
+    required: [course_id, version_id, raw_code, raw_name, source_evidence_id]
+    nullable: [normalized_code, normalized_name, credits, theory_hours, practice_hours, self_study_hours, course_type, assessment]
+  course_prerequisite:
+    required: [course_id, raw_prerequisite, source_evidence_id]
+    nullable: [relation_type, related_raw_code]
+  source_cell_evidence:
+    required: [source_file_id, workbook_path, sheet_name, cell_or_range, raw_value, review_status]
+classification:
+  curriculum: [curriculum, training_plan, structure, sample]
+  non_curriculum: [student_data, blank, formula_only, copy, unknown]
