@@ -313,7 +313,7 @@ def review_submission(request, submission_id):
         "target_course__curriculum", "target_course__curriculum__program")
     curricula = CurriculumVersion.objects.filter(status=CurriculumVersionStatus.APPROVED).select_related("program")
     if submission.student.program_code:
-        curricula = curricula.filter(program_id__iexact=submission.student.program_code)
+        curricula = curricula.filter(program__code__iexact=submission.student.program_code)
     rules = []
     for rule in RuleVersion.objects.filter(status=RuleStatus.APPROVED):
         definition = rule.definition if isinstance(rule.definition, dict) else {}
@@ -469,7 +469,7 @@ def review_extraction(request, document_id):
         raw_code__gt="",
     ).select_related("curriculum", "curriculum__program")
     if program_code:
-        target_courses = target_courses.filter(curriculum__program_id__iexact=program_code)
+        target_courses = target_courses.filter(curriculum__program__code__iexact=program_code)
     existing_rows = ExtractedCourseRow.objects.filter(submission=document.submission).select_related(
         "source_course_name__run__document", "target_course", "target_course__curriculum")
     return render(request, "reviews/extraction_review.html", {

@@ -315,6 +315,10 @@ class ApiAccessTests(APITestCase):
     def test_sales_and_teacher_can_complete_the_ui_recommendation_flow(self):
         owned = Submission.objects.create(student=self.student, owner=self.sales, teacher=self.teacher)
         curriculum, row, *_ = self.make_course_row(owned)
+        # Exercise the real target-program filter: program_code is populated
+        # for newly uploaded dossiers, unlike older synthetic fixtures.
+        self.student.program_code = "test"
+        self.student.save(update_fields=["program_code"])
         self.client.force_login(self.sales)
         response = self.client.post(f"/app/submissions/{owned.id}/review/", {
             "action": "create_recommendation", "rule_version_id": str(self.rule.id),

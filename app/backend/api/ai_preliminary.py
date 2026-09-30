@@ -72,7 +72,7 @@ def _history_context(program_code):
 @transaction.atomic
 def create_preliminary_recommendation(*, submission, actor):
     curriculum = CurriculumVersion.objects.filter(
-        program_id__iexact=submission.student.program_code,
+        program__code__iexact=submission.student.program_code,
         status=CurriculumVersionStatus.APPROVED,
     ).prefetch_related("courses").first()
     if curriculum is None:
