@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from rest_framework.test import APITestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.cache import cache
+from unittest.mock import patch
 
 from reviews.models import (DocumentVersion, ExtractedField, ExtractionRun, FieldReviewStatus,
     Course, CurriculumVersion, CurriculumVersionStatus, ExtractedCourseRow, MappingStatus, Program,
@@ -160,9 +161,16 @@ class ApiAccessTests(APITestCase):
             format="multipart",
         )
         self.assertEqual(upload.status_code, 201)
-        extraction = self.client.post(f"/api/v1/documents/{upload.data['data']['id']}/extract/")
+        with patch("api.extraction.extract_with_paddle", side_effect=PermissionError("blocked Paddle cache")), patch(
+            "api.ollama_ocr.extract_images",
+            return_value=([{"page_number": 1, "raw_text": "Họ và tên: Test Student", "fields": []}],
+                          [{"model": "ornith-1.5:9b", "input_tokens": 10, "output_tokens": 8}]),
+        ) as vision_ocr:
+            extraction = self.client.post(f"/api/v1/documents/{upload.data['data']['id']}/extract/")
         self.assertEqual(extraction.status_code, 200)
         self.assertEqual(extraction.data["data"]["status"], "NEEDS_REVIEW")
+        self.assertEqual(extraction.data["data"]["raw_text"], "Họ và tên: Test Student")
+        vision_ocr.assert_called_once()
 
     def test_assigned_teacher_can_correct_ocr_without_changing_raw_evidence(self):
         owned = Submission.objects.create(student=self.student, owner=self.sales, teacher=self.teacher)

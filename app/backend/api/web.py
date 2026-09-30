@@ -247,14 +247,9 @@ def review_submission(request, submission_id):
         if request.POST.get("action") == "preliminary_ai_recommendation":
             if not can_create:
                 return HttpResponseForbidden("Chỉ Sales phụ trách hoặc Admin được yêu cầu đề xuất AI.")
-            from .ai_preliminary import PreliminaryRecommendationError, create_preliminary_recommendation
-            try:
-                create_preliminary_recommendation(submission=submission, actor=request.user)
-            except PreliminaryRecommendationError as exc:
-                messages.error(request, str(exc))
-            else:
-                messages.success(request, "AI đã tạo đề xuất sơ bộ; giảng viên phụ trách sẽ xem và ra quyết định cuối.")
-                return redirect("review-submission", submission_id=submission.id)
+            from .analysis_jobs import start_analysis
+            start_analysis(submission, request.user)
+            return redirect("review-submission", submission_id=submission.id)
         elif request.POST.get("action") == "create_recommendation":
             if not can_create:
                 return HttpResponseForbidden("Chỉ Sales phụ trách hoặc Admin được tạo đề xuất.")
@@ -329,6 +324,24 @@ def review_submission(request, submission_id):
     })
 
 
+@login_required
+def submission_analysis(request, submission_id):
+    submission = get_object_or_404(Submission.objects.select_related("student"), pk=submission_id)
+    role = user_role(request.user)
+    can_create = role == Role.ADMIN or (role == Role.SALES and submission.owner_id == request.user.id)
+    can_view = can_create or (role == Role.TEACHER and submission.teacher_id == request.user.id)
+    if not can_view or (request.method == "POST" and not can_create):
+        return JsonResponse({"error": "Bạn không có quyền thực hiện thao tác này."}, status=403)
+    from .analysis_jobs import job_state, recover_interrupted, start_analysis
+    if request.method == "POST":
+        return JsonResponse(job_state(start_analysis(submission, request.user)), status=202)
+    if request.method != "GET":
+        return JsonResponse({"error": "Chỉ hỗ trợ GET và POST."}, status=405)
+    recover_interrupted(submission)
+    job = submission.analysis_jobs.order_by("-created_at").first()
+    return JsonResponse(job_state(job) if job else {"status": "IDLE", "message": ""})
+
+
 def _can_access_document(user, document):
     role = user_role(user)
     return role == Role.ADMIN or (role == Role.SALES and document.submission.owner_id == user.id) or (
@@ -364,8 +377,11 @@ def review_extraction(request, document_id):
             if role == Role.SALES and document.submission.owner_id != request.user.id:
                 return HttpResponseForbidden("Bạn không có quyền chạy OCR cho hồ sơ này.")
             from .extraction import extract_document
-            extract_document(document)
-            messages.success(request, "Đã tạo bản trích xuất. Các trường vẫn cần người kiểm tra.")
+            run = extract_document(document)
+            if run.status == "FAILED":
+                messages.error(request, "OCR thất bại. Kiểm tra kết nối Ollama vision hoặc tải lại ảnh rõ nét hơn.")
+            else:
+                messages.success(request, "Đã tạo bản trích xuất. Các trường vẫn cần người kiểm tra.")
             return redirect("review-extraction", document_id=document.id)
         elif action == "review_field":
             if role not in {Role.ADMIN, Role.TEACHER}:

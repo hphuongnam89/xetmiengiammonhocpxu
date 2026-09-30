@@ -5,7 +5,6 @@ import json
 import os
 import urllib.request
 
-from django.core.files.storage import default_storage
 from django.db import transaction
 
 from reviews.models import (
@@ -21,14 +20,17 @@ class PreliminaryRecommendationError(ValueError):
 
 def _local_chat(prompt):
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_TEXT_MODEL", "gpt-oss:20b")
+    model = os.getenv("OLLAMA_TEXT_MODEL", "ornith-1.5:9b")
     payload = {"model": model, "stream": False, "format": "json",
-               "options": {"temperature": 0},
+               "think": "low" if model.startswith("gpt-oss") else False,
+               "options": {"temperature": 0, "num_predict": 6144, "num_ctx": 32768},
                "messages": [{"role": "user", "content": prompt}]}
     request = urllib.request.Request(f"{base_url}/api/chat", data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                                      headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(request, timeout=900) as response:
+    with urllib.request.urlopen(request, timeout=300) as response:
         result = json.loads(response.read())
+    if result.get("done_reason") == "length":
+        raise PreliminaryRecommendationError("AI đã chạm giới hạn đầu ra. Vui lòng thử lại; kết quả chưa đầy đủ không được lưu.")
     return json.loads(result["message"]["content"]), result, model
 
 
@@ -36,6 +38,7 @@ def _document_context(submission):
     from .extraction import extract_document
 
     chunks = []
+    unreadable = []
     for document in submission.documents.all():
         run = document.extraction_runs.order_by("-created_at").first()
         if run is None or not run.raw_text.strip():
@@ -43,8 +46,15 @@ def _document_context(submission):
         if run.raw_text.strip():
             chunks.append({"document_id": str(document.id), "sha256": document.sha256,
                            "pages_text": run.raw_text[:100000]})
+        else:
+            unreadable.append(document.document_type)
+    if unreadable:
+        types = ", ".join(unreadable)
+        raise PreliminaryRecommendationError(
+            f"OCR chưa đọc được tài liệu: {types}. Mở mục Rà soát OCR để xem trạng thái hoặc tải lại tệp rõ nét hơn."
+        )
     if not chunks:
-        raise PreliminaryRecommendationError("Chưa đọc được nội dung tài liệu. Kiểm tra OCR hoặc tệp đã tải lên.")
+        raise PreliminaryRecommendationError("Hồ sơ chưa có tài liệu để phân tích. Tải bằng tốt nghiệp và bảng điểm trước.")
     return chunks
 
 
@@ -59,24 +69,32 @@ def _policy_context():
                 policy.append({"source": rule.source_reference, "status": rule.status,
                                "ocr_verification": definition.get("verification_status", "NOT_RECORDED"),
                                "page": page.get("page_number"),
-                               "text": page["raw_text"][:6000]})
+                               "text": page["raw_text"]})
     return policy
 
 
 def _history_context(program_code):
-    return list(HistoricalDecision.objects.filter(
-        status=HistoricalDecisionStatus.APPROVED,
-    ).values("source_sha256", "program_code", "course_code", "course_name", "decision", "decision_raw")[:500])
+    # Aggregate duplicate precedent rows without dropping courses or their sources.
+    groups = {}
+    for row in HistoricalDecision.objects.filter(status=HistoricalDecisionStatus.APPROVED).order_by("program_code", "course_code", "id"):
+        key = (row.program_code, row.course_code, row.course_name, row.decision)
+        group = groups.setdefault(key, {"program_code": row.program_code, "course_code": row.course_code,
+            "course_name": row.course_name, "decision": row.decision, "occurrences": 0, "source_sha256": []})
+        group["occurrences"] += 1
+        if row.source_sha256 not in group["source_sha256"]:
+            group["source_sha256"].append(row.source_sha256)
+    return sorted(groups.values(), key=lambda row: row["program_code"] != program_code)
 
 
-@transaction.atomic
-def create_preliminary_recommendation(*, submission, actor):
+def create_preliminary_recommendation(*, submission, actor, progress=None):
+    progress = progress or (lambda stage, message: None)
     curriculum = CurriculumVersion.objects.filter(
         program__code__iexact=submission.student.program_code,
         status=CurriculumVersionStatus.APPROVED,
     ).prefetch_related("courses").first()
     if curriculum is None:
         raise PreliminaryRecommendationError("Chưa chọn ngành đích hoặc chưa có khung CTĐT đã nhập/duyệt cho ngành này.")
+    progress("OCR", "Đang đọc bằng tốt nghiệp và bảng điểm…")
     documents = _document_context(submission)
     courses = list(curriculum.courses.filter(review_status="APPROVED").exclude(raw_code="").exclude(raw_name="")
                    .values("raw_code", "raw_name", "credits")[:500])
@@ -85,9 +103,9 @@ def create_preliminary_recommendation(*, submission, actor):
     policy = _policy_context()
     history = _history_context(curriculum.program_id)
     key_material = json.dumps({
-        "documents": [x["sha256"] for x in documents], "curriculum": str(curriculum.id),
+        "documents": [(x["sha256"], hashlib.sha256(x["pages_text"].encode()).hexdigest()) for x in documents], "curriculum": str(curriculum.id),
         "policy": policy, "history": history,
-        "model": os.getenv("OLLAMA_TEXT_MODEL", "gpt-oss:20b"),
+        "model": os.getenv("OLLAMA_TEXT_MODEL", "ornith-1.5:9b"), "prompt_version": 2,
     }, sort_keys=True)
     key_hash = hashlib.sha256(key_material.encode()).hexdigest()
     existing = RecommendationRun.objects.filter(submission=submission, idempotency_key=f"ai-{key_hash}").first()
@@ -105,7 +123,8 @@ def create_preliminary_recommendation(*, submission, actor):
         "Nêu rõ thiếu chứng cứ/không khớp và hạ confidence; không có mapping đủ căn cứ thì NEEDS_HUMAN_REVIEW. "
         "Ưu tiên các môn đích có trong danh mục curriculum được cung cấp; course_code phải trùng chính xác. "
         "Đầu ra JSON duy nhất: {items:[{course_code,recommendation,confidence,rationale,source_evidence,history_basis}]}. "
-        "recommendation chỉ FULL, PARTIAL, NOT_ELIGIBLE, NEEDS_HUMAN_REVIEW; confidence 0..1; tối đa 40 môn.\n"
+        "Mỗi rationale tối đa 300 ký tự. Trả tối đa 20 môn; ưu tiên môn có bằng chứng rõ, không liệt kê tràn lan.\n"
+        "recommendation chỉ FULL, PARTIAL, NOT_ELIGIBLE, NEEDS_HUMAN_REVIEW; confidence 0..1.\n"
         f"Ngành đích: {curriculum.program.name}; phiên bản: {curriculum.version_label}.\n"
         f"Văn bản quy định OCR (chỉ dùng đúng trích đoạn có mặt): {json.dumps(policy, ensure_ascii=False)}\n"
         f"Mẫu kết quả lịch sử đã duyệt: {json.dumps(history, ensure_ascii=False)}\n"
@@ -113,7 +132,10 @@ def create_preliminary_recommendation(*, submission, actor):
         f"Tài liệu hồ sơ và nội dung OCR: {json.dumps(documents, ensure_ascii=False)}"
     )
     try:
+        progress("AI", "Đã đọc tài liệu. AI đang đối chiếu quy định, chương trình và mẫu đã duyệt…")
         result_body, usage, model = _local_chat(prompt)
+    except PreliminaryRecommendationError:
+        raise
     except Exception as exc:
         raise PreliminaryRecommendationError(
             "Không gọi được AI local. Kiểm tra Ollama đang chạy và đã có model OLLAMA_TEXT_MODEL."
@@ -141,6 +163,30 @@ def create_preliminary_recommendation(*, submission, actor):
     if not sanitized:
         raise PreliminaryRecommendationError("AI chưa đưa ra môn đích hợp lệ trong khung đã duyệt; thử OCR lại hoặc chuyển giảng viên rà thủ công.")
 
+    progress("SAVING", "Đang lưu đề xuất để giảng viên kiểm tra…")
+    return _save_preliminary_recommendation(
+        submission=submission,
+        actor=actor,
+        curriculum=curriculum,
+        key_hash=key_hash,
+        documents=documents,
+        policy=policy,
+        history=history,
+        model=model,
+        usage=usage,
+        sanitized=sanitized,
+        allowed=allowed,
+    )
+
+
+@transaction.atomic
+def _save_preliminary_recommendation(*, submission, actor, curriculum, key_hash,
+                                     documents, policy, history, model, usage, sanitized, allowed):
+    existing = RecommendationRun.objects.filter(
+        submission=submission, idempotency_key=f"ai-{key_hash[:90]}",
+    ).first()
+    if existing:
+        return existing
     rule, _ = RuleVersion.objects.get_or_create(
         rule_code="AI-PRELIMINARY",
         version=1,
@@ -159,7 +205,7 @@ def create_preliminary_recommendation(*, submission, actor):
     for item, code, recommendation, confidence in sanitized:
         target = allowed[code]
         evidence = [*doc_refs, *policy_refs,
-                    {"kind": "historical_precedent_set", "approved_rows": len(history),
+                    {"kind": "historical_precedent_set", "approved_rows": sum(row.get("occurrences", 1) for row in history),
                      "note": "Aggregate precedent only; source major is not present in all historical rows."}]
         RecommendationItem.objects.create(
             run=run, course_code=code, recommendation=recommendation, confidence=confidence,

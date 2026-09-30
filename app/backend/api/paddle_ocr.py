@@ -31,7 +31,7 @@ def _recognize(image_bytes):
         image_file.write(image_bytes)
         image_path = image_file.name
     try:
-        result = _ocr_engine().predict(image_path)
+        result = list(_ocr_engine().predict(image_path))
     finally:
         Path(image_path).unlink(missing_ok=True)
     if not result:
@@ -55,7 +55,7 @@ def _recognize(image_bytes):
 def _ollama_fields(raw_text, page_number):
     """Ask the local text model to label OCR spans; OCR text remains the evidence."""
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_TEXT_MODEL", "gpt-oss:20b")
+    model = os.getenv("OLLAMA_TEXT_MODEL", "ornith-1.5:9b")
     prompt = (
         "Extract only fields clearly present in this OCR text from a student academic record. "
         "Do not infer or calculate values. Preserve every course as separate fields. "
@@ -69,7 +69,8 @@ def _ollama_fields(raw_text, page_number):
         f"{base_url}/api/chat",
         data=json.dumps({
             "model": model, "stream": False, "format": "json",
-            "options": {"temperature": 0},
+            "think": "low" if model.startswith("gpt-oss") else False,
+            "options": {"temperature": 0, "num_ctx": 16384, "num_predict": 4096},
             "messages": [{"role": "user", "content": prompt}],
         }, ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"}, method="POST",

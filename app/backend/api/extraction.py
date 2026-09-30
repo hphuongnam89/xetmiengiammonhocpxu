@@ -1,4 +1,5 @@
 import re
+import logging
 from decimal import Decimal, InvalidOperation
 
 from django.core.files.storage import default_storage
@@ -18,7 +19,9 @@ from reviews.models import (
 )
 
 from .permissions import user_role
-from .paddle_ocr import extract_images
+from .paddle_ocr import extract_images as extract_with_paddle
+
+logger = logging.getLogger(__name__)
 
 
 def _labeled_fields(text):
@@ -80,10 +83,22 @@ def extract_document(document):
                 review_status=FieldReviewStatus.NEEDS_REVIEW)
         return run
     try:
-        pages, usage = extract_images(document, content)
-        run.engine = "paddleocr+ollama-local"
+        try:
+            pages, usage = extract_with_paddle(document, content)
+        except Exception:
+            logger.exception("PaddleOCR failed for document %s; trying local Ollama vision", document.id)
+            pages, usage = [], []
+        if not any(str(page.get("raw_text", "")).strip() for page in pages):
+            from .ollama_ocr import extract_images as extract_with_ollama_vision
+
+            pages, usage = extract_with_ollama_vision(document, content)
+            run.engine = "ollama-vision-fallback"
+        else:
+            run.engine = "paddleocr+ollama-local"
         run.model_version = usage[0]["model"] if usage else "PaddleOCR/PP-OCRv6"
         run.raw_text = "\n".join(page["raw_text"] for page in pages)
+        if not run.raw_text.strip():
+            raise ValueError("OCR completed without recognizing any text")
         run.status = ExtractionStatus.NEEDS_REVIEW
         run.save(update_fields=["engine", "model_version", "raw_text", "status"])
         allowed_fields = {"student_name", "school_name", "program", "course_name", "course_code", "credits", "grade", "document_date"}
@@ -105,8 +120,9 @@ def extract_document(document):
             AIUsageEvent.objects.create(provider="ollama", model_name=event["model"], operation="document_ocr",
                 input_tokens=event["input_tokens"], output_tokens=event["output_tokens"], cost=0)
     except Exception:
-        run.engine = "ollama-vision"
-        run.status = ExtractionStatus.NEEDS_REVIEW
+        logger.exception("All OCR engines failed for document %s", document.id)
+        run.engine = "ocr-failed"
+        run.status = ExtractionStatus.FAILED
         run.save(update_fields=["engine", "status"])
     return run
 
@@ -122,4 +138,7 @@ class DocumentExtractionView(APIView):
         if role not in {Role.ADMIN, Role.SALES}:
             return Response({"error": {"code": "forbidden", "message": "Not allowed."}}, status=403)
         run = extract_document(document)
-        return Response({"data": {"id": str(run.id), "status": run.status, "raw_text": run.raw_text}})
+        result = {"id": str(run.id), "status": run.status, "raw_text": run.raw_text}
+        if run.status == ExtractionStatus.FAILED:
+            result["message"] = "OCR thất bại trên các bộ đọc hiện có. Kiểm tra PaddleOCR và model Ollama vision rồi thử lại."
+        return Response({"data": result})

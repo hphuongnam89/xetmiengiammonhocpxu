@@ -25,12 +25,13 @@ def _pdf_page_images(content, limit=10):
 
 def _ollama_page(image_bytes):
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_VISION_MODEL", "gemma4:e4b-it-qat")
+    model = os.getenv("OLLAMA_VISION_MODEL", "ornith-1.5:9b")
     payload = {
         "model": model,
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0},
+        "think": "low" if model.startswith("gpt-oss") else False,
+        "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 6144},
         "messages": [{"role": "user", "content": "Đọc chính xác trang tài liệu tiếng Việt/Anh. Không suy đoán. Trả JSON: {raw_text:string, fields:[{field_key,raw_value,evidence_text,confidence}]} . confidence từ 0 đến 1.", "images": [base64.b64encode(image_bytes).decode("ascii")]}],
     }
     request = urllib.request.Request(
@@ -39,13 +40,17 @@ def _ollama_page(image_bytes):
     )
     with urllib.request.urlopen(request, timeout=180) as response:
         result = json.loads(response.read())
+    if result.get("done_reason") == "length":
+        raise ValueError("OCR response was truncated")
     body = json.loads(result["message"]["content"])
     return body, result, model
 
 
 def extract_images(document, content):
     if document.mime_type == "application/pdf":
-        images = _pdf_page_images(content)
+        import io
+        from pypdf import PdfReader
+        images = _pdf_page_images(content, limit=len(PdfReader(io.BytesIO(content)).pages))
     elif document.mime_type in {"image/jpeg", "image/png"}:
         images = [content]
     else:

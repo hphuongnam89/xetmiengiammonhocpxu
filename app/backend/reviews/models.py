@@ -252,6 +252,23 @@ class RecommendationRun(models.Model):
             raise ValidationError("Only approved rule versions can run in production.")
 
 
+class AnalysisJob(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    submission = models.ForeignKey(Submission, on_delete=models.PROTECT, related_name="analysis_jobs")
+    requested_by = models.ForeignKey(User, on_delete=models.PROTECT)
+    status = models.CharField(max_length=20, default="PENDING")
+    stage = models.CharField(max_length=30, default="QUEUED")
+    message = models.CharField(max_length=1000, blank=True)
+    worker_token = models.CharField(max_length=36)
+    result = models.ForeignKey(RecommendationRun, null=True, blank=True, on_delete=models.PROTECT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=("submission",),
+            condition=models.Q(status__in=["PENDING", "RUNNING"]), name="uniq_active_analysis_job")]
+
+
 class RecommendationItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     run = models.ForeignKey(RecommendationRun, on_delete=models.PROTECT, related_name="items")
