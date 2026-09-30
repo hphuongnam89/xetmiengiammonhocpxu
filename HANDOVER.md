@@ -18,9 +18,9 @@ Các `STATUS.md` trong `app/docs/` ghi theo thời điểm từng phase, không 
 | --- | --- | --- |
 | Tài khoản/quyền | Session login, `UserProfile`, Sales/Teacher/Admin, kiểm tra owner/assignment ở các luồng chính | Mọi `is_staff=True` được coi là Admin nghiệp vụ; chưa có bộ test đầy đủ mọi endpoint/role |
 | Hồ sơ/tài liệu | Tạo hồ sơ, chọn teacher, upload, checksum, xem file qua view có kiểm tra quyền | Chưa có quét malware và triển khai private storage production |
-| OCR | pypdf text, Ollama ảnh/scan, raw evidence, màn hình sửa/xác nhận/thêm trường; giáo viên có thể ghép tường minh các trường đã xác nhận thành dòng môn học | OCR đồng bộ, scan hồ sơ tối đa 10 trang; lỗi bị gộp vào `NEEDS_REVIEW`; không tự nhóm tên/điểm/tín chỉ từ các dòng khác nhau |
+| OCR | pypdf text; PaddleOCR PP-OCRv6 tiny cho ảnh/PDF scan và Ollama local để cấu trúc tiếng Việt; raw evidence, màn hình sửa/xác nhận/thêm trường | OCR đồng bộ, scan hồ sơ tối đa 10 trang; lỗi bị gộp vào `NEEDS_REVIEW`; không tự nhóm tên/điểm/tín chỉ từ các dòng khác nhau |
 | Danh mục/nguồn | Import 5 khung, giữ ô/dòng nguồn, staging lịch sử, OCR draft quy định | Không tự khôi phục qua Git; phần lớn nội dung học thuật cần rà/duyệt |
-| Đề xuất | API/UI tạo run từ dòng môn học đã ghép ở server, yêu cầu rule/curriculum đã duyệt, idempotency, mapping `APPROVED`, lưu snapshot field/document/curriculum | Cần chủ học thuật rà nguồn thật; evaluator chưa thực thi `RuleVersion.definition`; mapping chưa ràng buộc phiên bản curriculum; OCR không tự phát hiện đủ dòng bảng |
+| Đề xuất | Sales chọn ngành đích và yêu cầu Ollama local tạo run AI sơ bộ từ nội dung OCR, trích đoạn PDF đã OCR, curriculum đích đã duyệt và lịch sử Excel đã duyệt; Teacher xem căn cứ và ra quyết định cuối/điều chỉnh | Run AI là gợi ý, chưa phải quyết định học thuật; PDF OCR vẫn là `UNVERIFIED_OCR`; evaluator quy tắc thủ công cũ chưa thực thi `RuleVersion.definition`; cần kiểm chứng độ chính xác và chạy UAT trên hồ sơ giả |
 | Xét duyệt | Teacher quyết định/override có lý do, audit và thông báo trong app | Cần kiểm tra trạng thái hồ sơ khi nhiều run, chạy lại hoặc bổ sung tài liệu |
 | Quản trị | Django Admin cho rule/mapping/curriculum/history; metrics và CSV tổng hợp | Chưa có gói triển khai, CI và nghiệm thu end-to-end production |
 
@@ -34,7 +34,7 @@ Vì vậy, “có rule `APPROVED`” chưa chứng minh đủ điều kiện tí
 
 ### A. Nối OCR đã xác nhận → đề xuất học phần → màn hình xét
 
-**Tiến độ 30/09/2026:** Đã triển khai nền luồng ở nhánh `feat/ocr-to-recommendation`: mô hình `ExtractedCourseRow`; ghép thủ công các field `HUMAN_ACCEPTED` cùng extraction run; chọn môn đích trong curriculum/course đã duyệt; tạo run từ row ID phía server; lưu giá trị field gốc/đã xác nhận, evidence, trang, checksum tài liệu, mapping và curriculum; giao diện Sales tạo/xem run và Teacher đã giao ghi quyết định. Một run được đánh dấu hiện hành; run mới thay thế run hiện hành và API từ chối quyết định run cũ. Đã có test API/UI với fixture học thuật tổng hợp. **Đầu việc A chưa nghiệm thu đầy đủ:** chưa có nguồn rule/mapping thật được chủ học thuật duyệt trên database dùng được; OCR bảng vẫn cần người rà/ghép thủ công; cần UAT phân quyền nhiều tài khoản, chạy lại sau khi thay tài liệu, và kiểm tra deployment.
+**Tiến độ 30/09/2026:** Nền OCR đã xác nhận → recommendation vẫn có cho quy trình có mapping đã duyệt. Bổ sung luồng thử nghiệm riêng: Sales chọn một trong năm ngành đích, upload, bấm tạo đề xuất sơ bộ AI; local PaddleOCR/Ollama đọc nguồn, bản PDF quy định OCR và precedent đã duyệt; Teacher được giao xem căn cứ và ghi quyết định cuối hoặc thay đổi kết quả. Hai PDF hồ sơ tổng hợp giả nằm trong `test-fixtures/dossiers/`; tài khoản `demo_sales`/`demo_teacher` chỉ có trong SQLite local. **Đầu việc A chưa nghiệm thu đầy đủ:** đề xuất local AI chưa được hiệu chuẩn/đánh giá độ đúng bởi chủ học thuật; OCR quy định còn cần đối chiếu ảnh gốc; cần UAT nhiều role và kiểm tra deployment.
 
 **Bắt đầu tại:** [`api/web.py`](app/backend/api/web.py), [`api/extraction.py`](app/backend/api/extraction.py), [`api/recommendations.py`](app/backend/api/recommendations.py), [`reviews/models.py`](app/backend/reviews/models.py), các template trong `app/backend/reviews/templates/reviews/`.
 
@@ -66,11 +66,19 @@ Vì vậy, “có rule `APPROVED`” chưa chứng minh đủ điều kiện tí
 
 1. Rà 5 khung đã nhập: 380 dòng nguồn gồm 301 dòng mã/tên và 79 dòng cấu trúc; kiểm tra tín chỉ trống, mã trùng, nhóm tự chọn. Không đổi dòng cấu trúc thành học phần.
 2. Duyệt curriculum theo tài khoản thực và phạm vi được giao. `activate_imported_curricula` là batch cố định cho bộ dữ liệu cũ, không phải importer/approval chung cho mọi nguồn.
-3. Rà 155 dòng lịch sử đang ở `PENDING`, đối chiếu ô nguồn rồi approve/reject. “132 FULL/23 PARTIAL” không có nghĩa đã được duyệt.
+3. Nguồn 155 dòng lịch sử QTKD (132 `FULL`, 23 `PARTIAL`) đã được xác nhận theo yêu cầu người dùng trước đó trong SQLite local ngày 30/09/2026; audit ghi `HISTORICAL_SOURCE_APPROVED_BY_USER_CONFIRMATION`, không gán người duyệt giả. Trên database mới, import vẫn để `PENDING` cho đến khi có rà soát/xác nhận đúng thẩm quyền.
 4. Phân loại 107 sheet không khớp và các workbook khác; chỉ bổ sung manifest sau khi xác nhận header/cột. Dry-run, kiểm tra số dòng, import idempotent và giữ provenance.
 5. Xây chức năng nhập phiên bản mới, so sánh thay đổi và duyệt có audit; không sửa đè dữ liệu nguồn đã phê duyệt.
 
 **Hoàn tất khi:** mỗi dòng dùng trong xét có nguồn và trạng thái duyệt rõ ràng; phần chưa rà có danh sách riêng; chạy lại không nhân bản; số dòng và checksum đối chiếu được trên máy mới.
+
+### Ghi nhận tiếp tục 30/09/2026
+
+- Đã cài PaddleOCR 3.7/PaddlePaddle 3.3 CPU trong `.venv`, thêm dependency group `ocr`; model PP-OCRv6 tiny hoạt động. Đã OCR đủ 19 trang của ba PDF; draft giữ `UNVERIFIED_OCR` để chờ đối chiếu.
+- Database local hiện có 5 curriculum/301 học phần được kích hoạt từ nguồn Excel, 155 lịch sử đã duyệt theo xác nhận của người dùng và ba PDF OCR draft. Database này không nằm trong Git.
+- UI tạo hồ sơ bắt buộc chọn ngành đích trong năm chương trình được duyệt. AI run sử dụng Ollama local `gpt-oss:20b`, history Excel đã duyệt, curriculum đích và PDF OCR; lưu evidence/audit/usage. Không cấu hình API bên thứ ba, không gửi dữ liệu sinh viên ra ngoài máy.
+- Tài khoản thử local: `demo_sales`, `demo_teacher`; cùng mật khẩu `PXU-Local-Demo-2026!`. Hai PDF synthetic nằm ở `test-fixtures/dossiers/`.
+- `manage.py check`, kiểm tra migrations và 28 tests đạt. Đây là kiểm tra code; chưa chạy browser end-to-end có Ollama trên hồ sơ mới. Các PDF OCR vẫn cần người rà; đề xuất AI chưa được hiệu chuẩn học thuật và app chưa sẵn sàng production.
 
 ### D. Làm OCR vận hành ổn định
 

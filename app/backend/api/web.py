@@ -26,6 +26,7 @@ from reviews.models import (
     Course,
     CurriculumVersion,
     CurriculumVersionStatus,
+    Program,
     ExtractedCourseRow,
     RuleStatus,
     RuleVersion,
@@ -61,8 +62,10 @@ def create_submission(request):
         program = request.POST.get("program_code", "").strip()[:100]
         teacher_id = request.POST.get("teacher_id") or None
         uploaded = request.FILES.get("file")
-        if not code or not name or not uploaded:
-            messages.error(request, "Nhập mã, họ tên và tải lên bảng điểm/văn bằng.")
+        if not code or not name or not program or not uploaded:
+            messages.error(request, "Nhập mã, họ tên, chọn ngành đích và tải lên bảng điểm/văn bằng.")
+        elif not Program.objects.filter(code=program, curricula__status=CurriculumVersionStatus.APPROVED).exists():
+            messages.error(request, "Chọn một ngành có khung chương trình đã duyệt.")
         else:
             ext = Path(uploaded.name).suffix.lower()
             allowed = {".pdf": ("application/pdf", b"%PDF-"), ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
@@ -100,7 +103,8 @@ def create_submission(request):
                     return redirect("dashboard")
                 except Exception:
                     messages.error(request, "Không thể tạo hồ sơ. Kiểm tra mã sinh viên và thử lại.")
-    return render(request, "reviews/submission_form.html", {"teachers": teachers})
+    programs = Program.objects.filter(curricula__status=CurriculumVersionStatus.APPROVED).distinct().order_by("name")
+    return render(request, "reviews/submission_form.html", {"teachers": teachers, "programs": programs})
 
 
 @login_required
@@ -163,7 +167,18 @@ def review_submission(request, submission_id):
     current_run = submission.recommendation_runs.filter(is_current=True).select_related("rule_version", "curriculum_version").first()
     items = RecommendationItem.objects.filter(run=current_run).select_related("run").prefetch_related("teacher_decision") if current_run else RecommendationItem.objects.none()
     if request.method == "POST":
-        if request.POST.get("action") == "create_recommendation":
+        if request.POST.get("action") == "preliminary_ai_recommendation":
+            if not can_create:
+                return HttpResponseForbidden("Chỉ Sales phụ trách hoặc Admin được yêu cầu đề xuất AI.")
+            from .ai_preliminary import PreliminaryRecommendationError, create_preliminary_recommendation
+            try:
+                create_preliminary_recommendation(submission=submission, actor=request.user)
+            except PreliminaryRecommendationError as exc:
+                messages.error(request, str(exc))
+            else:
+                messages.success(request, "AI đã tạo đề xuất sơ bộ; giảng viên phụ trách sẽ xem và ra quyết định cuối.")
+                return redirect("review-submission", submission_id=submission.id)
+        elif request.POST.get("action") == "create_recommendation":
             if not can_create:
                 return HttpResponseForbidden("Chỉ Sales phụ trách hoặc Admin được tạo đề xuất.")
             from .recommendation_service import RecommendationInputError, create_recommendation_run

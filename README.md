@@ -27,7 +27,7 @@ Git **không chứa** `.venv`, `.env` thực tế, SQLite local, tài liệu upl
 
 - Git và Python **3.12** để cài mới với bộ dependency hiện tại. `pyproject.toml` cho phép Python từ 3.12 nhưng đang ràng buộc Pillow 10.4; [bảng tương thích chính thức của Pillow](https://pillow.readthedocs.io/en/stable/installation/python-support.html) hỗ trợ 3.12 cho dòng này, không liệt kê 3.13/3.14. Việc môi trường cũ chạy được không chứng minh cài sạch được trên Python mới hơn.
 - Internet khi clone/cài package. Tài khoản GitHub có quyền repository nếu cần push.
-- Chỉ khi dùng OCR ảnh/PDF scan mới cần thêm Ollama và Poppler; xem phần 5.
+- OCR PDF scan dùng PaddleOCR PP-OCRv6 tiny và Poppler; Ollama chạy local để sắp xếp trích xuất/đề xuất. Tài liệu không gửi sang API bên thứ ba.
 
 ### macOS / Linux — Terminal
 
@@ -92,13 +92,15 @@ Khi tạo superuser, tự đặt tên/mật khẩu; validator hiện yêu cầu 
 2. Trong **Users**, tạo tài khoản Sales và Teacher thử nghiệm, bật `Active` và đặt mật khẩu riêng.
 3. Trong **User profiles**, tạo profile cho từng tài khoản, chọn đúng `SALES` hoặc `TEACHER`.
 4. Để `Staff status` **tắt** ở hai tài khoản này. Code hiện coi mọi user có `is_staff=True` là Admin nghiệp vụ; Django Group không thay thế `UserProfile.role`.
-5. Đăng nhập Sales tại `/accounts/login/`, tạo hồ sơ qua `/app/submissions/new/`, chọn giảng viên và upload tài liệu thử không chứa dữ liệu thật. Định dạng được nhận: PDF/JPEG/PNG, tối đa 10 MB/file.
+5. Đăng nhập Sales tại `/accounts/login/`, tạo hồ sơ qua `/app/submissions/new/`, chọn **ngành đích** và giảng viên, rồi upload tài liệu thử không chứa dữ liệu thật. Định dạng được nhận: PDF/JPEG/PNG, tối đa 10 MB/file.
 6. Mở màn hình OCR của tài liệu: `/app/documents/<document_uuid>/extraction/`. Sales phụ trách hoặc Admin có thể chạy OCR; người có quyền có thể đối chiếu/sửa/xác nhận trường trích xuất. Teacher chỉ truy cập hồ sơ được giao.
 7. Thử bằng hai tài khoản Sales và hai Teacher để kiểm tra không xem được hồ sơ ngoài quyền. Xem danh sách nghiệm thu đầy đủ trong [HANDOVER.md](HANDOVER.md).
 
-Giảng viên mở `/app/documents/<document_uuid>/extraction/`, đối chiếu và xác nhận từng trường. Sau đó ghép tường minh tên môn, điểm, tín chỉ (và mã môn nếu có) từ cùng lần OCR, chọn môn đích trong một curriculum đã duyệt. Không có bước ghép tự động giữa các trường rời. Sales phụ trách/Admin mở `/app/submissions/<submission_uuid>/review/` để chọn các dòng đã ghép, rule đã được xác nhận về học thuật và phiên bản curriculum đích, rồi tạo đề xuất. Giảng viên được giao xem nguồn/căn cứ và ghi quyết định cuối tại cùng màn hình.
+**Trên workspace phát triển hiện tại** đã có sẵn tài khoản thử local `demo_sales` và `demo_teacher`, mật khẩu `PXU-Local-Demo-2026!`. Tại checkout mới các tài khoản này không tồn tại. Có thể dùng hai PDF tổng hợp trong [`test-fixtures/dossiers/`](test-fixtures/dossiers/) để thử end-to-end; chúng không phải hồ sơ thật.
 
-Nếu chưa có curriculum/rule/mapping đã duyệt, hệ thống không tạo đề xuất như thể dữ liệu đó đã được duyệt. Dữ liệu rule và mapping thực tế trong repo vẫn cần chủ học thuật xác minh; deterministic evaluator hiện chưa thực thi đầy đủ nội dung rule và mapping chưa gắn chặt với phiên bản curriculum.
+Sales phụ trách/Admin mở `/app/submissions/<submission_uuid>/review/` rồi bấm **Phân tích hồ sơ và tạo đề xuất sơ bộ**. Hệ thống dùng OCR, quy định PDF đã OCR và các dòng lịch sử Excel đã duyệt để đề xuất theo ngành đích. Giảng viên được giao xem căn cứ, chọn đồng ý/đổi kết quả và ghi quyết định cuối tại cùng màn hình. Kết quả AI luôn sơ bộ.
+
+Luồng AI sơ bộ yêu cầu curriculum ngành đích đã duyệt; trích đoạn quy định OCR và lịch sử đều hiển thị tình trạng nguồn để Teacher kiểm tra. Luồng rule/mapping xác định cũ vẫn yêu cầu rule/mapping đã duyệt. Dữ liệu rule/mapping thực tế trong repo cần chủ học thuật xác minh; deterministic evaluator chưa thực thi đầy đủ nội dung rule và mapping chưa gắn chặt với phiên bản curriculum.
 
 ## 4. Nhập lại dữ liệu trên database mới
 
@@ -139,7 +141,7 @@ python app/backend/manage.py stage_historical_workbook --workbook "12. XÉT MIE
 
 Kỳ vọng: 16 sheet khớp, 107 sheet bỏ qua, 155 dòng ứng viên gồm 132 `FULL` và 23 `PARTIAL`. Kiểm tra đúng nguồn rồi chạy lại **thêm `--apply`** để lưu. Các dòng vẫn `PENDING`, không tự trở thành precedent được duyệt. `FULL/PARTIAL` ở đây là kết quả đọc từ cột nguồn, không phải trạng thái đã nghiệm thu.
 
-Giảng viên/chủ nghiệp vụ phải rà nguồn; Admin dùng quy trình approve/reject trong **Historical decisions** để ghi người và thời điểm duyệt. Những sheet không khớp cần manifest riêng. Lệnh `import_historical_reviews` dành cho một sheet với config khác; không truyền manifest staging nhiều sheet ở trên cho lệnh đó.
+Giảng viên/chủ nghiệp vụ phải rà nguồn; Admin dùng quy trình approve/reject trong **Historical decisions** để ghi người và thời điểm duyệt. Nếu chủ dữ liệu xác nhận một nguồn đã được duyệt trước đó, lệnh `approve_historical_source --source-sha256 <hash> --review-note "<can cu xac nhan>"` ghi audit rõ đây là xác nhận của người yêu cầu, không gán nhầm cho tài khoản duyệt. Những sheet không khớp cần manifest riêng. Lệnh `import_historical_reviews` dành cho một sheet với config khác; không truyền manifest staging nhiều sheet ở trên cho lệnh đó.
 
 ### 4.3. Văn bản quy định
 
@@ -149,25 +151,25 @@ Kiểm tra file/page, chưa gọi AI và chưa ghi dữ liệu:
 python app/backend/manage.py stage_scanned_rulebooks --config app/config/import-manifests/rulebook-sources.json
 ```
 
-Sau khi cấu hình Ollama/Poppler ở phần 5, chạy lại **thêm `--apply`** để OCR và lưu `RuleVersion` dạng `DRAFT`, `UNVERIFIED_OCR`. Lệnh này OCR mọi trang nguồn, lưu từng trang và có thể tiếp tục lần sau nếu bị ngắt. Đây không phải bộ quy tắc thực thi được duyệt.
+Sau khi cài PaddleOCR/Ollama/Poppler ở phần 5, chạy lại **thêm `--apply`** để OCR và lưu `RuleVersion` dạng `DRAFT`, `UNVERIFIED_OCR`. Lệnh này OCR mọi trang nguồn, lưu từng trang và có thể tiếp tục lần sau nếu bị ngắt. AI sơ bộ có thể đọc các trích đoạn này, nhưng chúng chưa phải bộ quy tắc đã kiểm chứng học thuật.
 
 Để duyệt quy tắc/mapping cần nguồn đối chiếu và xác nhận của chủ học thuật; xem [HANDOVER.md](HANDOVER.md) và [các bảng còn cần chép/kiểm chứng](app/docs/02-rulebook/PENDING_MAPPINGS.md). Không tự đặt `verified=true` chỉ để vượt kiểm tra của Admin.
 
 ## 5. Bật OCR ảnh/PDF scan
 
-PDF có text layer dùng `pypdf` sẵn trong dependency. Ảnh/PDF scan gọi Ollama; PDF scan còn cần `pdftoppm` của Poppler.
+PDF có text layer dùng `pypdf`. Ảnh/PDF scan dùng PaddleOCR PP-OCRv6 tiny chạy CPU; PDF scan cần `pdftoppm` của Poppler. Ollama chạy local để cấu trúc OCR và tạo đề xuất, không cần model vision.
 
 1. Cài và mở [Ollama](https://ollama.com/download). Nếu chưa có dịch vụ chạy, mở terminal riêng và chạy `ollama serve`.
-2. Chạy `ollama list` để xem model đã cài. Model cần hỗ trợ ảnh theo [Ollama Vision](https://docs.ollama.com/capabilities/vision).
-3. Code mặc định dùng tag `gemma4:e4b-it-qat`. Có thể thử `ollama pull gemma4:e4b-it-qat`; nếu tag không có ở môi trường đích, chọn model vision thực sự có sẵn, tải bằng `ollama pull <model-tag>` rồi đặt `OLLAMA_VISION_MODEL` đúng tag. Lần bàn giao tài liệu chưa chạy OCR model thật.
+2. Cài OCR một lần: `python -m pip install "paddlepaddle>=3.3,<4" "paddleocr>=3.7,<4"`. Cache model PaddleOCR nằm trong `.cache/paddlex`, không thuộc Git.
+3. Chạy `ollama list`; cấu hình mặc định là `OLLAMA_TEXT_MODEL=gpt-oss:20b`. Nếu thiếu, chạy `ollama pull gpt-oss:20b`. Có thể đổi biến này sang một model Ollama local khác tương thích `/api/chat`.
 4. Cài Poppler: macOS có Homebrew dùng `brew install poppler`; Ubuntu/Debian dùng `sudo apt install poppler-utils`. Windows cần bản Poppler có `pdftoppm.exe`, thêm thư mục `bin` vào PATH hoặc đặt `PDFTOPPM_BIN` tới file đó. Kiểm tra bằng `pdftoppm -v`.
-5. Trong terminal chạy Django, đặt biến rồi khởi động lại server.
+5. Trong terminal chạy Django, đặt `OLLAMA_BASE_URL` rồi khởi động lại server.
 
 macOS/Linux:
 
 ```bash
 export OLLAMA_BASE_URL=http://127.0.0.1:11434
-export OLLAMA_VISION_MODEL=gemma4:e4b-it-qat
+export OLLAMA_TEXT_MODEL=gpt-oss:20b
 # Chỉ cần nếu pdftoppm không nằm trong PATH; thay bằng đường dẫn thật:
 # export PDFTOPPM_BIN=/absolute/path/to/pdftoppm
 ```
@@ -176,7 +178,7 @@ PowerShell:
 
 ```powershell
 $env:OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-$env:OLLAMA_VISION_MODEL = "gemma4:e4b-it-qat"
+$env:OLLAMA_TEXT_MODEL = "gpt-oss:20b"
 # Chỉ cần nếu không có trong PATH; thay bằng đường dẫn thật:
 # $env:PDFTOPPM_BIN = "C:\path\to\poppler\bin\pdftoppm.exe"
 ```
