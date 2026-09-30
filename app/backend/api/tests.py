@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from django.contrib.auth.models import User
 from rest_framework.test import APITestCase
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -23,6 +25,54 @@ class ApiAccessTests(APITestCase):
         self.rule = RuleVersion.objects.create(rule_code="RULE-TEST", version=1, status=RuleStatus.APPROVED,
             definition={"rules": [{"rule_id": "test-only"}], "academic_owner_review":
                 {"verified": True, "reviewer": "Test fixture", "note": "Synthetic test data only."}})
+
+    def make_upload_program(self):
+        program = Program.objects.create(code="UPLOAD-TEST", name="Upload test program")
+        curriculum = CurriculumVersion.objects.create(program=program, version_label="Synthetic v1",
+            source_file="synthetic.xlsx", source_sha256="f" * 64, source_sheet="Test",
+            status=CurriculumVersionStatus.APPROVED)
+        return program, curriculum
+
+    def demo_diploma(self, name="DEMO-only-university-transcript.pdf"):
+        path = Path(__file__).resolve().parents[3] / "test-fixtures" / "dossiers" / name
+        return path.read_bytes()
+
+    def test_submission_form_has_separate_degree_and_transcript_inputs_without_student_number(self):
+        self.make_upload_program()
+        self.client.force_login(self.sales)
+        response = self.client.get("/app/submissions/new/")
+        html = response.content.decode()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('name="diploma_file"', html)
+        self.assertIn('name="transcript_file_1"', html)
+        self.assertIn('name="transcript_file_2"', html)
+        self.assertNotIn('name="student_code"', html)
+        self.assertIn('name="full_name"', html)
+
+    def test_degree_preview_extracts_name_from_text_pdf(self):
+        self.client.force_login(self.sales)
+        response = self.client.post("/app/submissions/preview-degree-name/", {
+            "diploma_file": SimpleUploadedFile("diploma.pdf", self.demo_diploma(), content_type="application/pdf"),
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["full_name"], "Demo University Student A")
+
+    def test_sales_creates_case_with_separate_document_types_and_generated_internal_code(self):
+        program, _curriculum = self.make_upload_program()
+        self.client.force_login(self.sales)
+        second_transcript = self.demo_diploma() + b"\n% distinct second transcript fixture\n"
+        response = self.client.post("/app/submissions/new/", {
+            "full_name": "Demo University Student A", "program_code": program.code,
+            "teacher_id": str(self.teacher.id),
+            "diploma_file": SimpleUploadedFile("diploma.pdf", self.demo_diploma(), content_type="application/pdf"),
+            "transcript_file_1": SimpleUploadedFile("transcript-1.pdf", self.demo_diploma("DEMO-only-college-transcript.pdf"), content_type="application/pdf"),
+            "transcript_file_2": SimpleUploadedFile("transcript-2.pdf", second_transcript, content_type="application/pdf"),
+        })
+        self.assertEqual(response.status_code, 302)
+        submission = Submission.objects.get(owner=self.sales, student__full_name="Demo University Student A")
+        self.assertTrue(submission.student.student_code.startswith("INCOMING-"))
+        self.assertEqual(set(submission.documents.values_list("document_type", flat=True)),
+                         {"DIPLOMA", "TRANSCRIPT_1", "TRANSCRIPT_2"})
 
     def make_course_row(self, submission, *, mapped=True, grade_value="8.0"):
         program = Program.objects.create(code="TEST", name="Test program")

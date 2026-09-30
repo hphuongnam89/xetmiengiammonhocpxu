@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.core.files.storage import default_storage
-from django.http import FileResponse, HttpResponseForbidden
+from django.http import FileResponse, HttpResponseForbidden, JsonResponse
 from django.views.decorators.http import require_POST
 import hashlib
 import uuid
@@ -35,6 +35,80 @@ from reviews.models import (
 from .permissions import user_role
 
 
+ALLOWED_UPLOADS = {
+    ".pdf": ("application/pdf", b"%PDF-"),
+    ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
+    ".jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+    ".png": ("image/png", b"\x89PNG\r\n\x1a\n"),
+}
+
+
+def _validated_upload(uploaded):
+    if not uploaded or uploaded.size > 10 * 1024 * 1024:
+        return None
+    expected = ALLOWED_UPLOADS.get(Path(uploaded.name).suffix.lower())
+    head = uploaded.read(8)
+    uploaded.seek(0)
+    if not expected or uploaded.content_type != expected[0] or not head.startswith(expected[1]):
+        return None
+    return expected
+
+
+def _degree_name(uploaded):
+    """Read the first diploma page locally and return an explicitly labeled name."""
+    from .extraction import _labeled_fields
+
+    content = uploaded.read()
+    uploaded.seek(0)
+    raw_text = ""
+    if uploaded.content_type == "application/pdf":
+        from io import BytesIO
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(content))
+        raw_text = (reader.pages[0].extract_text() or "") if reader.pages else ""
+        if not raw_text.strip():
+            from .ollama_ocr import _pdf_page_images
+            from .paddle_ocr import _recognize
+
+            images = _pdf_page_images(content, limit=1)
+            raw_text = _recognize(images[0])[0] if images else ""
+    else:
+        from .paddle_ocr import _recognize
+
+        raw_text = _recognize(content)[0]
+
+    fields = _labeled_fields(raw_text)
+    name = next((f["raw_value"] for f in fields if f["field_key"] == "student_name"), "")
+    if not name and raw_text.strip():
+        try:
+            from .paddle_ocr import _ollama_fields
+
+            fields, _usage, _model = _ollama_fields(raw_text, 1)
+            name = next((str(f.get("raw_value", "")).strip() for f in fields
+                         if f.get("field_key") == "student_name" and f.get("raw_value")), "")
+        except Exception:
+            name = ""
+    return name[:255], raw_text[:12000]
+
+
+@login_required
+@require_POST
+def preview_degree_name(request):
+    if user_role(request.user) not in {Role.SALES, Role.ADMIN}:
+        return HttpResponseForbidden("Không có quyền đọc trước bằng cấp.")
+    uploaded = request.FILES.get("diploma_file")
+    if not _validated_upload(uploaded):
+        return JsonResponse({"error": "Bằng cấp phải là PDF/JPG/PNG hợp lệ, không quá 10 MB."}, status=400)
+    try:
+        name, _raw_text = _degree_name(uploaded)
+    except Exception:
+        return JsonResponse({"full_name": "", "message": "Chưa tự đọc được họ tên; bạn có thể nhập theo bằng cấp."})
+    if not name:
+        return JsonResponse({"full_name": "", "message": "Không tìm thấy họ tên rõ ràng; vui lòng kiểm tra/nhập lại."})
+    return JsonResponse({"full_name": name, "message": "Đã điền họ tên theo bằng cấp. Vui lòng đối chiếu trước khi lưu."})
+
+
 @login_required
 def dashboard(request):
     role = user_role(request.user)
@@ -57,52 +131,55 @@ def create_submission(request):
         return HttpResponseForbidden("Không có quyền tạo hồ sơ.")
     teachers = UserProfile.objects.filter(role=Role.TEACHER).select_related("user")
     if request.method == "POST":
-        code = request.POST.get("student_code", "").strip()[:100]
         name = request.POST.get("full_name", "").strip()[:255]
         program = request.POST.get("program_code", "").strip()[:100]
         teacher_id = request.POST.get("teacher_id") or None
-        uploaded = request.FILES.get("file")
-        if not code or not name or not program or not uploaded:
-            messages.error(request, "Nhập mã, họ tên, chọn ngành đích và tải lên bảng điểm/văn bằng.")
+        uploads = [
+            ("DIPLOMA", request.FILES.get("diploma_file")),
+            ("TRANSCRIPT_1", request.FILES.get("transcript_file_1")),
+            ("TRANSCRIPT_2", request.FILES.get("transcript_file_2")),
+        ]
+        present_uploads = [(kind, uploaded) for kind, uploaded in uploads if uploaded]
+        if not name or not program or not request.FILES.get("diploma_file") or not request.FILES.get("transcript_file_1"):
+            messages.error(request, "Bằng đại học và bảng điểm 1 là bắt buộc. Kiểm tra họ tên, ngành đích và các tệp đã chọn.")
         elif not Program.objects.filter(code=program, curricula__status=CurriculumVersionStatus.APPROVED).exists():
             messages.error(request, "Chọn một ngành có khung chương trình đã duyệt.")
+        elif any(_validated_upload(uploaded) is None for _kind, uploaded in present_uploads):
+            messages.error(request, "Mỗi tệp phải là PDF/JPG/PNG hợp lệ và không quá 10 MB.")
         else:
-            ext = Path(uploaded.name).suffix.lower()
-            allowed = {".pdf": ("application/pdf", b"%PDF-"), ".jpg": ("image/jpeg", b"\xff\xd8\xff"),
-                       ".jpeg": ("image/jpeg", b"\xff\xd8\xff"), ".png": ("image/png", b"\x89PNG\r\n\x1a\n")}
-            expected = allowed.get(ext)
-            head = uploaded.read(8)
-            uploaded.seek(0)
-            if uploaded.size > 10 * 1024 * 1024 or not expected or uploaded.content_type != expected[0] or not head.startswith(expected[1]):
-                messages.error(request, "File phải là PDF/JPG/PNG hợp lệ và không quá 10 MB.")
-            elif teacher_id and not UserProfile.objects.filter(user_id=teacher_id, role=Role.TEACHER).exists():
+            if teacher_id and not UserProfile.objects.filter(user_id=teacher_id, role=Role.TEACHER).exists():
                 messages.error(request, "Giáo viên được chọn không hợp lệ.")
             else:
                 try:
-                    student, _ = Student.objects.get_or_create(
-                        student_code=code, defaults={"full_name": name, "program_code": program}
+                    student = Student.objects.create(
+                        student_code=f"INCOMING-{uuid.uuid4().hex}",
+                        full_name=name,
+                        program_code=program,
                     )
                     submission = Submission.objects.create(student=student, owner=request.user, teacher_id=teacher_id)
-                    digest = hashlib.sha256()
-                    for chunk in uploaded.chunks():
-                        digest.update(chunk)
-                    uploaded.seek(0)
-                    key = f"documents/{submission.id}/{uuid.uuid4()}{ext}"
-                    default_storage.save(key, uploaded)
-                    DocumentVersion.objects.create(
-                        submission=submission,
-                        document_type=request.POST.get("document_type", "TRANSCRIPT")[:50],
-                        storage_key=key,
-                        sha256=digest.hexdigest(),
-                        mime_type=expected[0],
-                    )
+                    for document_type, uploaded in present_uploads:
+                        ext = Path(uploaded.name).suffix.lower()
+                        expected = _validated_upload(uploaded)
+                        digest = hashlib.sha256()
+                        for chunk in uploaded.chunks():
+                            digest.update(chunk)
+                        uploaded.seek(0)
+                        key = f"documents/{submission.id}/{uuid.uuid4()}{ext}"
+                        default_storage.save(key, uploaded)
+                        DocumentVersion.objects.create(
+                            submission=submission,
+                            document_type=document_type,
+                            storage_key=key,
+                            sha256=digest.hexdigest(),
+                            mime_type=expected[0],
+                        )
                     if submission.teacher_id:
                         Notification.objects.create(recipient=submission.teacher, submission=submission,
                             event_type="SUBMISSION_ASSIGNED", message=f"Bạn được phân công xét hồ sơ {student.full_name}.")
-                    messages.success(request, "Đã tạo hồ sơ và tải tài liệu.")
+                    messages.success(request, "Đã tạo hồ sơ; bằng cấp và bảng điểm đã được tải lên.")
                     return redirect("dashboard")
                 except Exception:
-                    messages.error(request, "Không thể tạo hồ sơ. Kiểm tra mã sinh viên và thử lại.")
+                    messages.error(request, "Không thể tạo hồ sơ. Kiểm tra các tệp đã tải lên rồi thử lại.")
     programs = Program.objects.filter(curricula__status=CurriculumVersionStatus.APPROVED).distinct().order_by("name")
     return render(request, "reviews/submission_form.html", {"teachers": teachers, "programs": programs})
 

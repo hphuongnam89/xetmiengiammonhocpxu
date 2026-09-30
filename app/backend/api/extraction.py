@@ -23,7 +23,7 @@ from .paddle_ocr import extract_images
 
 def _labeled_fields(text):
     patterns = {
-        "student_name": r"(?:họ\s*tên|student\s*name)\s*[:\-]\s*(.+)",
+        "student_name": r"(?:họ\s*(?:và\s*)?tên|student\s*name|full\s*name)\s*[:\-]\s*(.+)",
         "school_name": r"(?:trường|school)\s*[:\-]\s*(.+)",
         "program": r"(?:ngành|program|major)\s*[:\-]\s*(.+)",
         "credits": r"(?:tín\s*chỉ|credits?)\s*[:\-]\s*([0-9]+(?:[.,][0-9]+)?)",

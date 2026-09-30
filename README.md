@@ -92,7 +92,7 @@ Khi tạo superuser, tự đặt tên/mật khẩu; validator hiện yêu cầu 
 2. Trong **Users**, tạo tài khoản Sales và Teacher thử nghiệm, bật `Active` và đặt mật khẩu riêng.
 3. Trong **User profiles**, tạo profile cho từng tài khoản, chọn đúng `SALES` hoặc `TEACHER`.
 4. Để `Staff status` **tắt** ở hai tài khoản này. Code hiện coi mọi user có `is_staff=True` là Admin nghiệp vụ; Django Group không thay thế `UserProfile.role`.
-5. Đăng nhập Sales tại `/accounts/login/`, tạo hồ sơ qua `/app/submissions/new/`, chọn **ngành đích** và giảng viên, rồi upload tài liệu thử không chứa dữ liệu thật. Định dạng được nhận: PDF/JPEG/PNG, tối đa 10 MB/file.
+5. Đăng nhập Sales tại `/accounts/login/`, tạo hồ sơ qua `/app/submissions/new/`, chọn **ngành đích** và giảng viên. Tải riêng bằng tốt nghiệp đại học (bắt buộc), bảng điểm 1 (bắt buộc), bảng điểm 2 (tùy chọn); sau khi chọn bằng, OCR cục bộ tự điền họ tên để Sales đối chiếu/chỉnh sửa. Không yêu cầu mã sinh viên PXU trước khi nhập học. Mỗi file PDF/JPEG/PNG tối đa 10 MB.
 6. Mở màn hình OCR của tài liệu: `/app/documents/<document_uuid>/extraction/`. Sales phụ trách hoặc Admin có thể chạy OCR; người có quyền có thể đối chiếu/sửa/xác nhận trường trích xuất. Teacher chỉ truy cập hồ sơ được giao.
 7. Thử bằng hai tài khoản Sales và hai Teacher để kiểm tra không xem được hồ sơ ngoài quyền. Xem danh sách nghiệm thu đầy đủ trong [HANDOVER.md](HANDOVER.md).
 

@@ -76,7 +76,7 @@ Vì vậy, “có rule `APPROVED`” chưa chứng minh đủ điều kiện tí
 
 - Đã cài PaddleOCR 3.7/PaddlePaddle 3.3 CPU trong `.venv`, thêm dependency group `ocr`; model PP-OCRv6 tiny hoạt động. Đã OCR đủ 19 trang của ba PDF; draft giữ `UNVERIFIED_OCR` để chờ đối chiếu.
 - Database local hiện có 5 curriculum/301 học phần được kích hoạt từ nguồn Excel, 155 lịch sử đã duyệt theo xác nhận của người dùng và ba PDF OCR draft. Database này không nằm trong Git.
-- UI tạo hồ sơ bắt buộc chọn ngành đích trong năm chương trình được duyệt. AI run sử dụng Ollama local `gpt-oss:20b`, history Excel đã duyệt, curriculum đích và PDF OCR; lưu evidence/audit/usage. Không cấu hình API bên thứ ba, không gửi dữ liệu sinh viên ra ngoài máy.
+- UI tạo hồ sơ bắt buộc chọn ngành đích; nhận riêng bằng tốt nghiệp đại học, bảng điểm 1 và bảng điểm 2 tùy chọn. OCR trang đầu bằng cấp điền trước họ tên (Sales có thể sửa); mã số PXU không yêu cầu trước khi nhập học, chỉ còn mã intake nội bộ không hiển thị. AI run sử dụng Ollama local `gpt-oss:20b`, history Excel đã duyệt, curriculum đích và PDF OCR; lưu evidence/audit/usage. Không cấu hình API bên thứ ba, không gửi dữ liệu sinh viên ra ngoài máy.
 - Tài khoản thử local: `demo_sales`, `demo_teacher`; cùng mật khẩu `PXU-Local-Demo-2026!`. Hai PDF synthetic nằm ở `test-fixtures/dossiers/`.
 - `manage.py check`, kiểm tra migrations và 28 tests đạt. Đây là kiểm tra code; chưa chạy browser end-to-end có Ollama trên hồ sơ mới. Các PDF OCR vẫn cần người rà; đề xuất AI chưa được hiệu chuẩn học thuật và app chưa sẵn sàng production.
 
