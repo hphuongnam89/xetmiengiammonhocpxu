@@ -185,7 +185,18 @@ $env:OLLAMA_TEXT_MODEL = "ornith1.5:9b"
 
 Thử một ảnh và một PDF scan nhỏ, kiểm tra trường đọc được và đối chiếu bản gốc. Chỉ thấy `NEEDS_REVIEW` **không đủ chứng minh OCR thành công**: code hiện cũng trả trạng thái này khi Ollama/Poppler lỗi. OCR hồ sơ scan hiện giới hạn 10 trang và chạy đồng bộ trong request; lệnh OCR văn bản quy định ở phần 4.3 là luồng riêng xử lý mọi trang.
 
-## 6. Kiểm tra trước khi tiếp tục phát triển
+## 6. Chạy demo Sales → AI → Teacher
+
+Trên database local mới, tạo dữ liệu tổng hợp và hai hồ sơ PDF mẫu:
+
+```bash
+python app/backend/manage.py migrate
+python app/backend/manage.py seed_demo --with-documents --password 'đổi-mật-khẩu-demo'
+```
+
+Đăng nhập `/accounts/login/` bằng `demo_sales` để mở hồ sơ, bấm tạo đề xuất AI; đăng nhập `demo_teacher` để xem căn cứ và quyết định từng môn. Dữ liệu này chỉ là synthetic fixture, không dùng để quyết định học thuật hoặc production.
+
+## 7. Kiểm tra trước khi tiếp tục phát triển
 
 Từ thư mục gốc repo, môi trường local đã kích hoạt:
 
@@ -202,7 +213,7 @@ Suite hiện có một test gọi adapter OCR với ảnh giả. Để test khô
 
 Mốc kiểm tra 30/09/2026: clone nguồn `8c6dc62` sang thư mục tạm, migrate database rỗng và chạy baseline 19 test. Khi chạy import thật phát hiện lỗi đọc header sau khi đóng workbook; bản bàn giao này sửa lỗi và bổ sung test hồi quy, **20 test đạt**, `check`/migration check sạch. Đã nhập lại 5 khung trên database tạm, đối chiếu 380 dòng và chạy preview lịch sử/quy định. Dùng interpreter/dependency sẵn có trên máy bàn giao (Python 3.14.5, Django 5.2.17); không đồng nghĩa đã cài sạch toàn bộ dependency trên Python 3.12/Windows. Đã build wheel bằng Poetry backend với `pip wheel --no-deps`. Chi tiết: [HANDOVER.md](HANDOVER.md).
 
-## 7. Giữ nguyên dữ liệu khi chuyển máy
+## 8. Giữ nguyên dữ liệu khi chuyển máy
 
 Chọn một trong hai cách:
 
@@ -217,7 +228,7 @@ python -c "import sqlite3, datetime; name='handover-'+datetime.datetime.now().st
 
 Trên máy mới, dùng cùng phiên bản code trước, cài dependency, dừng server rồi đặt bản backup vào `app/backend/db.sqlite3` và media vào đúng `app/backend/media/`. Sao lưu dữ liệu đích nếu đã tồn tại trước khi thay. Sau đó chạy `migrate`, `check`, đăng nhập và mở một hồ sơ/tài liệu đã bàn giao. Tài khoản đã có trong database không cần tạo lại; secret/cấu hình thật và model Ollama phải bàn giao/cài riêng. Kiểm tra `git status --short` không có dữ liệu runtime trước mọi lần push.
 
-## 8. Làm tiếp và cập nhật GitHub
+## 9. Làm tiếp và cập nhật GitHub
 
 Từ thư mục gốc repo, khi working tree sạch:
 
@@ -241,7 +252,7 @@ git push -u origin HEAD
 
 Thay `<cac-file-da-sua>` bằng danh sách đường dẫn thực tế, kiểm tra nội dung staged rồi mới commit. Push cần quyền ghi GitHub; nếu HTTPS hỏi mật khẩu, dùng cơ chế đăng nhập GitHub/PAT của bạn, không ghi token vào URL/file repo. Mở pull request để review và merge; máy khác chỉ lấy thay đổi đã merge vào `main` khi `git pull`. Nếu remote đi trước, cập nhật/giải quyết xung đột có kiểm tra; không force-push `main`. GitHub chứa code, **push không tự triển khai website**.
 
-## 9. Lỗi thường gặp
+## 10. Lỗi thường gặp
 
 | Hiện tượng | Kiểm tra / cách xử lý |
 | --- | --- |
@@ -256,6 +267,6 @@ Thay `<cac-file-da-sua>` bằng danh sách đường dẫn thực tế, kiểm t
 | Khung chương trình/lịch sử không xuất hiện sau clone | Database không nằm trên Git; thực hiện phần 4 hoặc 7 |
 | Manifest không tìm thấy file hoặc header | Chạy từ repo root, giữ tên Unicode, đối chiếu đúng workbook/sheet/header; không đoán cột thay thế |
 
-## 10. Trước khi đưa lên production
+## 11. Trước khi đưa lên production
 
 Đọc [PRODUCTION.md](app/docs/16-deployment/PRODUCTION.md) và phần production trong [HANDOVER.md](HANDOVER.md). Hiện repo mới có ràng buộc cấu hình; chưa có bộ triển khai vận hành hoàn chỉnh. Cần hoàn thiện server WSGI/ASGI, static, storage riêng tư, PostgreSQL, Redis TLS, HTTPS, backup/restore và kiểm tra phân quyền trên môi trường đích trước nghiệm thu.
