@@ -55,7 +55,7 @@ def _recognize(image_bytes):
 def _ollama_fields(raw_text, page_number):
     """Ask the local text model to label OCR spans; OCR text remains the evidence."""
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_TEXT_MODEL", "ornith-1.5:9b")
+    model = os.getenv("OLLAMA_TEXT_MODEL", "ornith1.5:9b")
     prompt = (
         "Extract only fields clearly present in this OCR text from a student academic record. "
         "Do not infer or calculate values. Preserve every course as separate fields. "

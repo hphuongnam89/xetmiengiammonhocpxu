@@ -20,7 +20,7 @@ class PreliminaryRecommendationError(ValueError):
 
 def _local_chat(prompt):
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_TEXT_MODEL", "ornith-1.5:9b")
+    model = os.getenv("OLLAMA_TEXT_MODEL", "ornith1.5:9b")
     payload = {"model": model, "stream": False, "format": "json",
                "think": "low" if model.startswith("gpt-oss") else False,
                "options": {"temperature": 0, "num_predict": 6144, "num_ctx": 32768},
@@ -105,7 +105,7 @@ def create_preliminary_recommendation(*, submission, actor, progress=None):
     key_material = json.dumps({
         "documents": [(x["sha256"], hashlib.sha256(x["pages_text"].encode()).hexdigest()) for x in documents], "curriculum": str(curriculum.id),
         "policy": policy, "history": history,
-        "model": os.getenv("OLLAMA_TEXT_MODEL", "ornith-1.5:9b"), "prompt_version": 2,
+        "model": os.getenv("OLLAMA_TEXT_MODEL", "ornith1.5:9b"), "prompt_version": 2,
     }, sort_keys=True)
     key_hash = hashlib.sha256(key_material.encode()).hexdigest()
     existing = RecommendationRun.objects.filter(submission=submission, idempotency_key=f"ai-{key_hash}").first()

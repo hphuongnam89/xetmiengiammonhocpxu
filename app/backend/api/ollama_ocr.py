@@ -25,7 +25,7 @@ def _pdf_page_images(content, limit=10):
 
 def _ollama_page(image_bytes):
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_VISION_MODEL", "ornith-1.5:9b")
+    model = os.getenv("OLLAMA_VISION_MODEL", "gemma4:e4b-it-qat")
     payload = {
         "model": model,
         "stream": False,

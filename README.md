@@ -161,7 +161,7 @@ PDF có text layer dùng `pypdf`. Ảnh/PDF scan dùng PaddleOCR PP-OCRv6 tiny c
 
 1. Cài và mở [Ollama](https://ollama.com/download). Nếu chưa có dịch vụ chạy, mở terminal riêng và chạy `ollama serve`.
 2. Cài OCR một lần: `python -m pip install "paddlepaddle>=3.3,<4" "paddleocr>=3.7,<4"`. Cache model PaddleOCR nằm trong `.cache/paddlex`, không thuộc Git.
-3. Chạy `ollama list`; cấu hình mặc định là `OLLAMA_TEXT_MODEL=gpt-oss:20b`. Nếu thiếu, chạy `ollama pull gpt-oss:20b`. Có thể đổi biến này sang một model Ollama local khác tương thích `/api/chat`.
+3. Chạy `ollama list`; cấu hình mặc định là `OLLAMA_TEXT_MODEL=ornith1.5:9b`. Nếu thiếu, chạy `ollama pull ornith1.5:9b`. Có thể đổi biến này sang một model Ollama local khác tương thích `/api/chat`.
 4. Cài Poppler: macOS có Homebrew dùng `brew install poppler`; Ubuntu/Debian dùng `sudo apt install poppler-utils`. Windows cần bản Poppler có `pdftoppm.exe`, thêm thư mục `bin` vào PATH hoặc đặt `PDFTOPPM_BIN` tới file đó. Kiểm tra bằng `pdftoppm -v`.
 5. Trong terminal chạy Django, đặt `OLLAMA_BASE_URL` rồi khởi động lại server.
 
@@ -169,7 +169,7 @@ macOS/Linux:
 
 ```bash
 export OLLAMA_BASE_URL=http://127.0.0.1:11434
-export OLLAMA_TEXT_MODEL=gpt-oss:20b
+export OLLAMA_TEXT_MODEL=ornith1.5:9b
 # Chỉ cần nếu pdftoppm không nằm trong PATH; thay bằng đường dẫn thật:
 # export PDFTOPPM_BIN=/absolute/path/to/pdftoppm
 ```
@@ -178,7 +178,7 @@ PowerShell:
 
 ```powershell
 $env:OLLAMA_BASE_URL = "http://127.0.0.1:11434"
-$env:OLLAMA_TEXT_MODEL = "gpt-oss:20b"
+$env:OLLAMA_TEXT_MODEL = "ornith1.5:9b"
 # Chỉ cần nếu không có trong PATH; thay bằng đường dẫn thật:
 # $env:PDFTOPPM_BIN = "C:\path\to\poppler\bin\pdftoppm.exe"
 ```
