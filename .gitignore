@@ -1,12 +1,14 @@
 .DS_Store
 .venv/
+.cache/
+app/backend/.cache/
 **/__pycache__/
 *.py[cod]
-*.sqlite3
-app/backend/media/
 .env
 .env.*
 !.env.example
+*.sqlite3
+app/backend/media/
 htmlcov/
 .coverage
 pytestdebug.log

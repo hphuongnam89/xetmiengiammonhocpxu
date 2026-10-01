@@ -1,5 +1,4 @@
-from django.db import transaction
-from django.db.models import Count
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -7,23 +6,18 @@ from rest_framework.views import APIView
 
 from reviews.models import (
     AuditEvent,
-    MappingStatus,
-    RuleMappingVersion,
-    HistoricalDecision,
-    HistoricalDecisionStatus,
+    CurriculumVersion,
     RecommendationItem,
     RecommendationRun,
     Role,
-    RuleStatus,
     RuleVersion,
     Submission,
-    SubmissionStatus,
-    TeacherDecision,
     Notification,
+    TeacherDecision,
 )
 
 from .permissions import user_role
-from .rule_engine import evaluate_course
+from .recommendation_service import RecommendationInputError, create_recommendation_run
 
 
 def _forbidden():
@@ -40,86 +34,30 @@ class RecommendationRunView(APIView):
             return _forbidden()
         if role not in {Role.ADMIN, Role.SALES}:
             return _forbidden()
-        rule = get_object_or_404(RuleVersion, pk=request.data.get("rule_version_id"))
-        if rule.status != RuleStatus.APPROVED:
-            return Response({"error": {"code": "rule_not_approved", "message": "Rule version is not approved."}}, status=422)
-        key = str(request.data.get("idempotency_key", "")).strip()[:100]
-        if not key:
-            return Response({"error": {"code": "idempotency_key_required", "message": "Idempotency key is required."}}, status=422)
-        existing = RecommendationRun.objects.filter(submission=submission, idempotency_key=key).prefetch_related("items").first()
-        if existing:
-            return Response({"data": self._serialize(existing)}, status=200)
-        items = request.data.get("items")
-        if not isinstance(items, list) or not items:
-            return Response({"error": {"code": "items_required", "message": "At least one course item is required."}}, status=422)
-        with transaction.atomic():
-            run = RecommendationRun.objects.create(
-                submission=submission,
-                rule_version=rule,
-                provider="deterministic",
-                model_name="rule-engine-v1",
-                status="COMPLETED",
-                idempotency_key=key,
+        try:
+            rule = RuleVersion.objects.get(pk=request.data.get("rule_version_id"))
+            curriculum = CurriculumVersion.objects.get(pk=request.data.get("curriculum_version_id"))
+        except (RuleVersion.DoesNotExist, CurriculumVersion.DoesNotExist, ValidationError, ValueError, TypeError):
+            return Response({"error": {"code": "version_unavailable", "message": "Rule or curriculum version is unavailable."}}, status=422)
+        key = str(request.data.get("idempotency_key", "")).strip()
+        row_ids = request.data.get("course_row_ids")
+        if not isinstance(row_ids, list) or any(not isinstance(value, str) for value in row_ids):
+            return Response({"error": {"code": "course_rows_required", "message": "Select verified course rows."}}, status=422)
+        try:
+            run, created = create_recommendation_run(
+                submission=submission, actor=request.user, rule=rule, curriculum=curriculum,
+                course_row_ids=row_ids, idempotency_key=key,
             )
-            for item in items:
-                course_code = str(item.get("course_code", "")).strip()[:100]
-                prior_course = str(item.get("prior_course", "")).strip()[:255]
-                mapping = None
-                if course_code and prior_course:
-                    mapping = RuleMappingVersion.objects.filter(
-                        target_course_code__iexact=course_code,
-                        source_course__iexact=prior_course,
-                        status=MappingStatus.APPROVED,
-                    ).order_by("-version").first()
-                evidence = item.get("evidence", [])
-                evidence = evidence if isinstance(evidence, list) else []
-                if mapping:
-                    evidence = [*evidence, f"approved_mapping:{mapping.mapping_code}:v{mapping.version}:{mapping.source_reference}"]
-                decision = evaluate_course(
-                    course_code=course_code,
-                    rule_approved=True,
-                    prior_grade=item.get("prior_grade"),
-                    prior_credits=item.get("prior_credits"),
-                    content_match=True if mapping else None,
-                    evidence=evidence,
-                )
-                program_code = submission.student.program_code
-                if program_code:
-                    precedent_counts = list(HistoricalDecision.objects.filter(
-                        program_code__iexact=program_code,
-                        course_code__iexact=course_code,
-                        status=HistoricalDecisionStatus.APPROVED,
-                    ).values("decision").annotate(total=Count("id")).order_by("decision"))
-                    if precedent_counts:
-                        context = ",".join(f"{row['decision']}={row['total']}" for row in precedent_counts)
-                        decision = type(decision)(decision.course_code, decision.recommendation,
-                            decision.evidence + (f"approved_history_context:{context}; context only",),
-                            decision.reason + " Historical approved outcomes are context only and did not change this result.",
-                            decision.confidence, decision.needs_human_review)
-                RecommendationItem.objects.create(
-                    run=run,
-                    course_code=decision.course_code,
-                    recommendation=decision.recommendation,
-                    confidence=decision.confidence,
-                    rationale=decision.reason,
-                    evidence=list(decision.evidence),
-                )
-            submission.status = SubmissionStatus.TEACHER_REVIEW
-            submission.save(update_fields=["status", "updated_at"])
-            if submission.teacher_id:
-                Notification.objects.create(
-                    recipient=submission.teacher,
-                    submission=submission,
-                    event_type="RECOMMENDATION_READY",
-                    message=f"Đề xuất miễn môn đã sẵn sàng: {submission.student.full_name}.",
-                )
-        return Response({"data": self._serialize(run)}, status=201)
+        except RecommendationInputError as exc:
+            return Response({"error": {"code": exc.code, "message": str(exc)}}, status=422)
+        return Response({"data": self._serialize(run)}, status=201 if created else 200)
 
     @staticmethod
     def _serialize(run):
         return {
             "id": str(run.id),
             "status": run.status,
+            "curriculum_version_id": str(run.curriculum_version_id) if run.curriculum_version_id else None,
             "items": [
                 {"id": str(item.id), "course_code": item.course_code, "recommendation": item.recommendation,
                  "confidence": str(item.confidence) if item.confidence is not None else None,
@@ -140,6 +78,9 @@ class TeacherDecisionView(APIView):
             return _forbidden()
         if role not in {Role.ADMIN, Role.TEACHER}:
             return _forbidden()
+        active_run = submission.recommendation_runs.filter(is_current=True).first()
+        if active_run is None or active_run.id != item.run_id:
+            return Response({"error": {"code": "stale_recommendation", "message": "Only the current recommendation run can be decided."}}, status=409)
         decision = str(request.data.get("decision", "")).upper()
         if decision not in {"FULL", "PARTIAL", "NOT_ELIGIBLE"}:
             return Response({"error": {"code": "invalid_decision", "message": "Unsupported decision."}}, status=422)
@@ -163,7 +104,7 @@ class TeacherDecisionView(APIView):
             event_type="TEACHER_DECISION",
             message=f"Giáo viên đã gửi kết quả xét hồ sơ {submission.student.full_name}.",
         )
-        if not RecommendationItem.objects.filter(run=item.run, teacher_decision__isnull=True).exists():
-            submission.status = SubmissionStatus.COMPLETED
+        if not RecommendationItem.objects.filter(run=active_run, teacher_decision__isnull=True).exists():
+            submission.status = "COMPLETED"
             submission.save(update_fields=["status", "updated_at"])
         return Response({"data": {"id": str(final.id), "decision": final.decision, "reason": final.reason}})

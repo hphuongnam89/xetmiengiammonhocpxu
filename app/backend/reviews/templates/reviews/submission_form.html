@@ -1,1 +1,73 @@
-<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tạo hồ sơ</title><style>body{font:16px system-ui;background:#f4f6fa;color:#172033}main{max-width:680px;margin:32px auto;background:white;padding:24px;border-radius:12px}label{display:block;margin:14px 0}input,select{display:block;box-sizing:border-box;width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px}button{padding:11px 18px;background:#174ea6;color:white;border:0;border-radius:6px}a{color:#1558a6}</style><main><p><a href="{% url 'dashboard' %}">← Bảng công việc</a></p><h1>Tạo hồ sơ xét miễn môn</h1>{% for message in messages %}<p>{{ message }}</p>{% endfor %}<form method="post" enctype="multipart/form-data">{% csrf_token %}<label>Mã sinh viên<input name="student_code" maxlength="100" required></label><label>Họ và tên<input name="full_name" maxlength="255" required></label><label>Mã ngành/chương trình<input name="program_code" maxlength="100"></label><label>Loại tài liệu<select name="document_type"><option value="TRANSCRIPT">Bảng điểm</option><option value="DIPLOMA">Bằng tốt nghiệp</option><option value="CERTIFICATE">Chứng chỉ</option><option value="OTHER">Khác</option></select></label><label>Giáo viên phụ trách<select name="teacher_id"><option value="">Chưa phân công</option>{% for profile in teachers %}<option value="{{ profile.user_id }}">{{ profile.user.get_full_name|default:profile.user.username }}</option>{% endfor %}</select></label><label>Tệp PDF/JPG/PNG, tối đa 10 MB<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required></label><button type="submit">Tạo hồ sơ và tải lên</button></form></main></html>
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tạo hồ sơ</title>
+<style>
+body{font:16px system-ui;background:#f4f6fa;color:#172033}
+main{max-width:760px;margin:32px auto;background:white;padding:24px;border-radius:12px}
+label{display:block;margin:14px 0}
+input,select{display:block;box-sizing:border-box;width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:6px}
+button{padding:11px 18px;background:#174ea6;color:white;border:0;border-radius:6px}
+a{color:#1558a6}.hint{color:#596477}.upload{padding:16px;border:1px solid #d5deea;border-radius:8px;margin:14px 0}
+</style>
+<main>
+  <p><a href="{% url 'dashboard' %}">← Bảng công việc</a></p>
+  <h1>Tạo hồ sơ xét miễn môn</h1>
+  {% for message in messages %}<p>{{ message }}</p>{% endfor %}
+  <p class="hint">Tải từng loại giấy tờ vào đúng ô. Bằng đại học và bảng điểm 1 là bắt buộc; bảng điểm 2 không bắt buộc.</p>
+  <form method="post" enctype="multipart/form-data" id="submission-form">
+    {% csrf_token %}
+    <div class="upload">
+      <label for="diploma-file"><strong>Bằng tốt nghiệp đại học *</strong><input id="diploma-file" type="file" name="diploma_file" accept=".pdf,.jpg,.jpeg,.png" required></label>
+      <p class="hint">Chọn bằng trước; hệ thống sẽ đọc họ tên từ trang đầu và điền vào ô bên dưới. Hãy kiểm tra lại kết quả OCR.</p>
+      <p id="diploma-status" class="hint" role="status" aria-live="polite"></p>
+    </div>
+    <label for="full-name">Họ và tên<input id="full-name" name="full_name" maxlength="255" autocomplete="name" required></label>
+    <label for="program-code">Ngành đích đăng ký tại PXU
+      <select id="program-code" name="program_code" required>
+        <option value="">Chọn ngành đích</option>
+        {% for program in programs %}<option value="{{ program.code }}">{{ program.name }} ({{ program.code }})</option>{% endfor %}
+      </select>
+    </label>
+    <p class="hint">Ngành đích là ngành đang đăng ký tại PXU; ngành/bậc học trước đây được đọc từ giấy tờ. Không cần mã sinh viên PXU ở bước này.</p>
+    <label for="transcript-file-1">Bảng điểm 1 *
+      <input id="transcript-file-1" type="file" name="transcript_file_1" accept=".pdf,.jpg,.jpeg,.png" required>
+    </label>
+    <label for="transcript-file-2">Bảng điểm 2 (nếu có)
+      <input id="transcript-file-2" type="file" name="transcript_file_2" accept=".pdf,.jpg,.jpeg,.png">
+    </label>
+    <label for="teacher-id">Giáo viên phụ trách
+      <select id="teacher-id" name="teacher_id"><option value="">Chưa phân công</option>
+        {% for profile in teachers %}<option value="{{ profile.user_id }}">{{ profile.user.get_full_name|default:profile.user.username }}</option>{% endfor %}
+      </select>
+    </label>
+    <p class="hint">Mỗi tệp PDF/JPG/PNG tối đa 10 MB.</p>
+    <button type="submit">Tạo hồ sơ và tải giấy tờ lên</button>
+  </form>
+</main>
+<script>
+const diplomaInput = document.getElementById("diploma-file");
+const fullNameInput = document.getElementById("full-name");
+const statusLine = document.getElementById("diploma-status");
+diplomaInput.addEventListener("change", async () => {
+  if (!diplomaInput.files.length) return;
+  const data = new FormData();
+  data.append("diploma_file", diplomaInput.files[0]);
+  const csrf = document.querySelector("[name=csrfmiddlewaretoken]").value;
+  statusLine.textContent = "Đang đọc trang đầu bằng OCR cục bộ…";
+  try {
+    const response = await fetch("{% url 'preview-degree-name' %}", {
+      method: "POST", body: data, headers: {"X-CSRFToken": csrf}, credentials: "same-origin"
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Không đọc được bằng cấp.");
+    if (result.full_name) fullNameInput.value = result.full_name;
+    statusLine.textContent = result.message;
+    fullNameInput.focus();
+  } catch (error) {
+    statusLine.textContent = `${error.message} Bạn có thể nhập họ tên theo bằng cấp.`;
+  }
+});
+</script>
+</html>

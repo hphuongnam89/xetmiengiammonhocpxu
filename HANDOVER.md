@@ -1,6 +1,6 @@
 # Bàn giao phát triển — PXU xét miễn học phần
 
-Cập nhật: **30/09/2026**. Đối chiếu nền mã nguồn tại commit **`8c6dc62`**, bản sửa importer tại **`d335033`**. Lần bàn giao này bổ sung tài liệu và sửa lỗi đọc lại header sau khi đóng Excel; không thay quy tắc xét miễn học phần. Hướng dẫn chạy/nhập dữ liệu: [README.md](README.md).
+Cập nhật: **30/09/2026**. Nền importer tại `d335033`; bắt đầu phát triển tiếp từ `bdb1e30` trên nhánh `feat/ocr-to-recommendation`. Hướng dẫn chạy/nhập dữ liệu: [README.md](README.md).
 
 ## 1. Nhận việc trong buổi đầu
 
@@ -18,21 +18,23 @@ Các `STATUS.md` trong `app/docs/` ghi theo thời điểm từng phase, không 
 | --- | --- | --- |
 | Tài khoản/quyền | Session login, `UserProfile`, Sales/Teacher/Admin, kiểm tra owner/assignment ở các luồng chính | Mọi `is_staff=True` được coi là Admin nghiệp vụ; chưa có bộ test đầy đủ mọi endpoint/role |
 | Hồ sơ/tài liệu | Tạo hồ sơ, chọn teacher, upload, checksum, xem file qua view có kiểm tra quyền | Chưa có quét malware và triển khai private storage production |
-| OCR | pypdf text, Ollama ảnh/scan, raw evidence, màn hình sửa/xác nhận/thêm trường | Synchronous, scan hồ sơ tối đa 10 trang; lỗi bị gộp vào `NEEDS_REVIEW`; chưa nối OCR vào recommendation |
+| OCR | pypdf text; PaddleOCR PP-OCRv6 tiny cho ảnh/PDF scan và Ollama local để cấu trúc tiếng Việt; raw evidence, màn hình sửa/xác nhận/thêm trường | OCR đồng bộ, scan hồ sơ tối đa 10 trang; lỗi bị gộp vào `NEEDS_REVIEW`; không tự nhóm tên/điểm/tín chỉ từ các dòng khác nhau |
 | Danh mục/nguồn | Import 5 khung, giữ ô/dòng nguồn, staging lịch sử, OCR draft quy định | Không tự khôi phục qua Git; phần lớn nội dung học thuật cần rà/duyệt |
-| Đề xuất | API tạo run, idempotency key, lookup mapping `APPROVED`, lưu rationale/evidence | `items` do request gửi lên; chưa tự dựng từ OCR đã được xác nhận |
+| Đề xuất | Sales chọn ngành đích và yêu cầu Ollama local tạo run AI sơ bộ từ nội dung OCR, trích đoạn PDF đã OCR, curriculum đích đã duyệt và lịch sử Excel đã duyệt; Teacher xem căn cứ và ra quyết định cuối/điều chỉnh | Run AI là gợi ý, chưa phải quyết định học thuật; PDF OCR vẫn là `UNVERIFIED_OCR`; evaluator quy tắc thủ công cũ chưa thực thi `RuleVersion.definition`; cần kiểm chứng độ chính xác và chạy UAT trên hồ sơ giả |
 | Xét duyệt | Teacher quyết định/override có lý do, audit và thông báo trong app | Cần kiểm tra trạng thái hồ sơ khi nhiều run, chạy lại hoặc bổ sung tài liệu |
 | Quản trị | Django Admin cho rule/mapping/curriculum/history; metrics và CSV tổng hợp | Chưa có gói triển khai, CI và nghiệm thu end-to-end production |
 
 ### Điểm cần hiểu trước khi sửa rule engine
 
-[`api/rule_engine.py`](app/backend/api/rule_engine.py) hiện chỉ kiểm tra evidence, trạng thái rule, điểm số `>=5`, tín chỉ `>0` và `content_match`. [`api/recommendations.py`](app/backend/api/recommendations.py) kiểm tra rule đã duyệt, nhưng **không thực thi nội dung `RuleVersion.definition` như một bộ luật cấu hình**. Mapping được tìm bằng cặp tên môn nguồn/mã môn đích; chưa ràng buộc đầy đủ theo phiên bản chương trình/thời hiệu. Caller truyền `content_match=True` nếu có mapping được duyệt, ngược lại truyền `None`, nên nhánh `PARTIAL` của evaluator chưa được luồng API này sử dụng cho trường hợp khớp một phần.
+[`api/rule_engine.py`](app/backend/api/rule_engine.py) hiện chỉ kiểm tra evidence, trạng thái rule, điểm số `>=5`, tín chỉ `>0` và `content_match`. API hiện đã dựng `items` từ các dòng OCR xác nhận phía server; nó không nhận điểm/evidence hay `content_match` của caller. Tuy vậy, evaluator **không thực thi nội dung `RuleVersion.definition` như một bộ luật cấu hình**. Mapping phải khớp tên/mã môn nguồn với mã môn đích và có xác nhận học thuật, nhưng chưa ràng buộc đầy đủ theo phiên bản chương trình/thời hiệu. Khi mapping thiếu hoặc nhập nhằng, kết quả cần Teacher review; nhánh `PARTIAL` chưa được tự suy ra từ nội dung mapping.
 
 Vì vậy, “có rule `APPROVED`” chưa chứng minh đủ điều kiện tính kết quả học thuật. Precedent lịch sử được duyệt hiện chỉ thêm thông tin tổng hợp, không thay quyết định của rule engine. Không suy diễn threshold/mapping/ngoại lệ từ code đơn giản này thành quy định của trường.
 
 ## 3. Các bước hoàn thiện theo thứ tự
 
 ### A. Nối OCR đã xác nhận → đề xuất học phần → màn hình xét
+
+**Tiến độ 30/09/2026:** Nền OCR đã xác nhận → recommendation vẫn có cho quy trình có mapping đã duyệt. Bổ sung luồng thử nghiệm riêng: Sales chọn một trong năm ngành đích, upload, bấm tạo đề xuất sơ bộ AI; local PaddleOCR/Ollama đọc nguồn, bản PDF quy định OCR và precedent đã duyệt; Teacher được giao xem căn cứ và ghi quyết định cuối hoặc thay đổi kết quả. Hai PDF hồ sơ tổng hợp giả nằm trong `test-fixtures/dossiers/`; tài khoản `demo_sales`/`demo_teacher` chỉ có trong SQLite local. **Đầu việc A chưa nghiệm thu đầy đủ:** đề xuất local AI chưa được hiệu chuẩn/đánh giá độ đúng bởi chủ học thuật; OCR quy định còn cần đối chiếu ảnh gốc; cần UAT nhiều role và kiểm tra deployment.
 
 **Bắt đầu tại:** [`api/web.py`](app/backend/api/web.py), [`api/extraction.py`](app/backend/api/extraction.py), [`api/recommendations.py`](app/backend/api/recommendations.py), [`reviews/models.py`](app/backend/reviews/models.py), các template trong `app/backend/reviews/templates/reviews/`.
 
@@ -64,11 +66,19 @@ Vì vậy, “có rule `APPROVED`” chưa chứng minh đủ điều kiện tí
 
 1. Rà 5 khung đã nhập: 380 dòng nguồn gồm 301 dòng mã/tên và 79 dòng cấu trúc; kiểm tra tín chỉ trống, mã trùng, nhóm tự chọn. Không đổi dòng cấu trúc thành học phần.
 2. Duyệt curriculum theo tài khoản thực và phạm vi được giao. `activate_imported_curricula` là batch cố định cho bộ dữ liệu cũ, không phải importer/approval chung cho mọi nguồn.
-3. Rà 155 dòng lịch sử đang ở `PENDING`, đối chiếu ô nguồn rồi approve/reject. “132 FULL/23 PARTIAL” không có nghĩa đã được duyệt.
+3. Nguồn 155 dòng lịch sử QTKD (132 `FULL`, 23 `PARTIAL`) đã được xác nhận theo yêu cầu người dùng trước đó trong SQLite local ngày 30/09/2026; audit ghi `HISTORICAL_SOURCE_APPROVED_BY_USER_CONFIRMATION`, không gán người duyệt giả. Trên database mới, import vẫn để `PENDING` cho đến khi có rà soát/xác nhận đúng thẩm quyền.
 4. Phân loại 107 sheet không khớp và các workbook khác; chỉ bổ sung manifest sau khi xác nhận header/cột. Dry-run, kiểm tra số dòng, import idempotent và giữ provenance.
 5. Xây chức năng nhập phiên bản mới, so sánh thay đổi và duyệt có audit; không sửa đè dữ liệu nguồn đã phê duyệt.
 
 **Hoàn tất khi:** mỗi dòng dùng trong xét có nguồn và trạng thái duyệt rõ ràng; phần chưa rà có danh sách riêng; chạy lại không nhân bản; số dòng và checksum đối chiếu được trên máy mới.
+
+### Ghi nhận tiếp tục 30/09/2026
+
+- Đã cài PaddleOCR 3.7/PaddlePaddle 3.3 CPU trong `.venv`, thêm dependency group `ocr`; model PP-OCRv6 tiny hoạt động. Đã OCR đủ 19 trang của ba PDF; draft giữ `UNVERIFIED_OCR` để chờ đối chiếu.
+- Database local hiện có 5 curriculum/301 học phần được kích hoạt từ nguồn Excel, 155 lịch sử đã duyệt theo xác nhận của người dùng và ba PDF OCR draft. Database này không nằm trong Git.
+- UI tạo hồ sơ bắt buộc chọn ngành đích; nhận riêng bằng tốt nghiệp đại học, bảng điểm 1 và bảng điểm 2 tùy chọn. OCR trang đầu bằng cấp điền trước họ tên (Sales có thể sửa); mã số PXU không yêu cầu trước khi nhập học, chỉ còn mã intake nội bộ không hiển thị. AI run sử dụng Ollama local `gpt-oss:20b`, history Excel đã duyệt, curriculum đích và PDF OCR; lưu evidence/audit/usage. Không cấu hình API bên thứ ba, không gửi dữ liệu sinh viên ra ngoài máy.
+- Tài khoản thử local: `demo_sales`, `demo_teacher`; cùng mật khẩu `PXU-Local-Demo-2026!`. Hai PDF synthetic nằm ở `test-fixtures/dossiers/`.
+- `manage.py check`, kiểm tra migrations và 28 tests đạt. Đây là kiểm tra code; chưa chạy browser end-to-end có Ollama trên hồ sơ mới. Các PDF OCR vẫn cần người rà; đề xuất AI chưa được hiệu chuẩn học thuật và app chưa sẵn sàng production.
 
 ### D. Làm OCR vận hành ổn định
 
@@ -135,6 +145,7 @@ Chạy trên dữ liệu giả hoặc bộ dữ liệu được phép kiểm th�
 | `makemigrations --check --dry-run` | Không có thay đổi migration |
 | `pytest -q` | Baseline 19/19; sau sửa importer có 20/20 đạt. Ollama trỏ tới cổng không chạy dịch vụ; media test của lượt cuối dùng thư mục tạm |
 | Regression importer | Test tái hiện lỗi `Attempt to use ZIP archive that was already closed` trước sửa và đạt sau sửa; kiểm tra header/cell/raw value, tín chỉ công thức không bị đoán, dry-run và import lặp |
+| Nối OCR → recommendation → teacher review (nhánh hiện tại) | 28 test đạt trên Python 3.12.14/Django 5.2.17; UI flow test dùng dữ liệu curriculum/mapping/rule tổng hợp. Migrate `0010`–`0012`, check và migration check sạch. Chưa nghiệm thu bằng nguồn học thuật thật hoặc browser UAT nhiều role |
 | Import 5 curriculum trên clone tạm sau sửa | 5 khung DRAFT, 380 dòng nguồn; preview activation đúng 301 dòng mã/tên và 79 dòng cấu trúc; không kích hoạt dữ liệu thật |
 | Preview lịch sử | 16 sheet khớp, 107 bỏ qua, 155 dòng (132 FULL, 23 PARTIAL); chưa ghi/duyệt lịch sử |
 | Preview PDF quy định | Tìm đủ 3 file với 14/2/3 trang; chưa gọi OCR. pypdf cảnh báo trùng metadata `/Info` ở nguồn nhưng kiểm tra page count kết thúc thành công |
