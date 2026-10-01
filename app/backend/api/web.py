@@ -180,7 +180,8 @@ def create_submission(request):
                     return redirect("dashboard")
                 except Exception:
                     messages.error(request, "Không thể tạo hồ sơ. Kiểm tra các tệp đã tải lên rồi thử lại.")
-    programs = Program.objects.filter(curricula__status=CurriculumVersionStatus.APPROVED).distinct().order_by("name")
+    programs = (Program.objects.filter(curricula__status=CurriculumVersionStatus.APPROVED)
+                .exclude(code__startswith="DEMO-").distinct().order_by("name"))
     return render(request, "reviews/submission_form.html", {"teachers": teachers, "programs": programs})
 
 
