@@ -36,6 +36,12 @@ Các mục dưới đây chưa được tự điền vì cần đúng từng dò
 - Khi duyệt, mỗi dòng sẽ khóa nội dung, lưu người duyệt/thời điểm/ghi chú và chỉ được dùng làm precedent tham khảo.
 - Dữ liệu lịch sử không tự thay thế rule và không tự quyết định hồ sơ mới.
 
+## Quyết định đã ghi nhận
+
+- `RULE-COMPARE-001`: bỏ/retire theo chốt ngày 2026-10-01.
+- 8 rule còn lại trong mục A: `APPROVED` trong database demo, có audit actor/time và ghi chú phạm vi test.
+- Các mapping chi tiết mục B vẫn chưa executable vì chưa có bảng từng dòng trong dữ liệu nguồn.
+
 ## Cách chốt
 
 Reply theo một trong hai dạng:
