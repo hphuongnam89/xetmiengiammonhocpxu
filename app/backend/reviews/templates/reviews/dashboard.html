@@ -1,8 +1,42 @@
 <!doctype html>
-<html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Miễn giảm học phần</title>
-<style>
-body{font:16px system-ui;margin:0;background:#f4f6fa;color:#172033}header{background:#173b70;color:white;padding:18px 5%;display:flex;justify-content:space-between}main{max-width:1100px;margin:28px auto;padding:0 16px}.grid{display:grid;grid-template-columns:2fr 1fr;gap:18px}.card{background:white;border-radius:12px;padding:20px;box-shadow:0 2px 10px #17203312;margin-bottom:16px}li{margin:10px 0}.pill{color:#174ea6;background:#e8f0fe;border-radius:20px;padding:4px 10px;font-size:13px}a{color:#1558a6}small{color:#64748b}@media(max-width:700px){.grid{grid-template-columns:1fr}}
-</style>
-<header><strong>Hệ thống xét miễn giảm học phần</strong><span>{{ request.user.username }} · {{ role }}</span></header>
-<main><h1>Bảng công việc</h1>{% for message in messages %}<p>{{ message }}</p>{% endfor %}<div class="grid"><section class="card"><h2>Hồ sơ</h2>{% if role == "SALES" or role == "ADMIN" %}<p><a href="{% url 'create-submission' %}">＋ Tạo hồ sơ và tải tài liệu</a></p>{% endif %}{% if submissions %}<ul>{% for s in submissions %}<li><strong>{{ s.student.full_name }}</strong> · <span class="pill">{{ s.get_status_display }}</span> · {{ s.created_at|date:"d/m/Y H:i" }} {% if role == "TEACHER" or role == "ADMIN" or role == "SALES" %}· <a href="{% url 'review-submission' s.id %}">{% if role == "SALES" %}Đề xuất / kết quả{% else %}Mở xét duyệt{% endif %}</a>{% endif %}{% if role == "SALES" or role == "ADMIN" %}{% for d in s.documents.all %}· <a href="{% url 'review-extraction' d.id %}">Rà OCR {{ d.document_type }}</a>{% endfor %}<form method="post" enctype="multipart/form-data" action="{% url 'upload-submission-document' s.id %}" style="display:inline">{% csrf_token %}<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required><input type="hidden" name="document_type" value="OTHER"><button type="submit">Thêm tài liệu</button></form>{% endif %}</li>{% endfor %}</ul>{% else %}<p>Chưa có hồ sơ.</p>{% endif %}</section><aside class="card"><h2>Thông báo</h2>{% for n in notifications %}<p>{% if not n.read_at %}<strong>{% endif %}{{ n.message }}{% if not n.read_at %}</strong>{% endif %}<br><small>{{ n.created_at|date:"d/m/Y H:i" }}</small>{% if not n.read_at %}<form method="post" action="{% url 'mark-notification-read' n.id %}">{% csrf_token %}<button type="submit">Đã đọc</button></form>{% endif %}</p>{% empty %}<p>Chưa có thông báo.</p>{% endfor %}</aside></div></main></html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Bảng công việc · Miễn giảm học phần</title>
+  <style>
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17233d;background:#f5f7fb;font-size:15px}
+    *{box-sizing:border-box}body{margin:0}a{color:#165dcc;text-decoration:none}a:hover{text-decoration:underline}
+    .topbar{height:68px;background:#173f78;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 clamp(20px,5vw,72px);box-shadow:0 1px 0 #0d2c58}.brand{font-size:20px;font-weight:750;letter-spacing:-.02em}.account{font-size:14px;color:#dce8f8}.account strong{color:#fff}
+    main{max-width:1240px;margin:0 auto;padding:38px 24px 64px}.page-head{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:24px}.eyebrow{margin:0 0 6px;color:#64748b;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.page-head h1{margin:0;font-size:32px;line-height:1.15;letter-spacing:-.035em}.intro{margin:0;color:#64748b;max-width:520px;line-height:1.55;text-align:right}
+    .grid{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,.8fr);gap:22px;align-items:start}.card{background:#fff;border:1px solid #e6ebf2;border-radius:16px;box-shadow:0 8px 28px #19345e0d}.card-head{display:flex;align-items:center;justify-content:space-between;padding:22px 24px 16px;border-bottom:1px solid #edf1f6}.card h2{margin:0;font-size:18px;letter-spacing:-.015em}.count{color:#64748b;font-size:13px}.card-body{padding:14px 18px 18px}.empty{padding:26px 8px;color:#64748b}
+    .case-list{display:grid;gap:10px;margin:0;padding:0;list-style:none}.case{padding:16px;border:1px solid #e6ebf2;border-radius:12px;background:#fbfcfe}.case:hover{border-color:#b9cbea;background:#f8fbff}.case-name{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-weight:700}.case-meta{margin-top:6px;color:#64748b;font-size:13px}.status{display:inline-flex;align-items:center;padding:4px 9px;border-radius:999px;background:#edf4ff;color:#1859a8;font-size:12px;font-weight:700}.status-completed{background:#e8f8ef;color:#177347}.case-actions{display:flex;align-items:center;justify-content:flex-start;gap:10px;flex-wrap:wrap;margin-top:12px}.case-actions a{font-size:13px;font-weight:650}.upload{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px dashed #dbe3ee}.upload-label{color:#64748b;font-size:12px;font-weight:650}.upload input[type=file]{max-width:220px;font-size:12px;color:#64748b}.button{border:1px solid #c8d5e7;border-radius:8px;background:#fff;color:#174b91;padding:7px 11px;font:inherit;font-size:13px;font-weight:650;cursor:pointer}.button:hover{background:#eef5ff;border-color:#8fb1df}.button-primary{background:#155dcc;border-color:#155dcc;color:#fff}.button-primary:hover{background:#104da8}
+    .notifications{display:grid;gap:2px}.notice{padding:15px 6px;border-bottom:1px solid #edf1f6;line-height:1.4}.notice:last-child{border-bottom:0}.notice.unread{border-left:3px solid #2875df;padding-left:12px}.notice p{margin:0 0 7px}.notice time{display:block;color:#8290a5;font-size:12px}.notice form{margin-top:10px}
+    @media(max-width:850px){.topbar{padding:0 20px}.grid{grid-template-columns:1fr}.intro{text-align:left}.page-head{display:block}.page-head h1{font-size:28px}}
+    @media(max-width:520px){main{padding:28px 14px 48px}.brand{font-size:17px}.account{font-size:12px}.card-head{padding:18px}.card-body{padding:12px}.case{padding:14px}.upload input[type=file]{max-width:100%}}
+  </style>
+</head>
+<body>
+  <header class="topbar"><div class="brand">Hệ thống xét miễn giảm học phần</div><div class="account"><strong>{{ request.user.username }}</strong> · {{ role }}</div></header>
+  <main>
+    <div class="page-head"><div><p class="eyebrow">Không gian làm việc</p><h1>Bảng công việc</h1></div><p class="intro">Theo dõi hồ sơ, tài liệu và các đề xuất đang chờ xử lý.</p></div>
+    {% for message in messages %}<p class="notice">{{ message }}</p>{% endfor %}
+    <div class="grid">
+      <section class="card">
+        <div class="card-head"><h2>Hồ sơ</h2><span class="count">{{ submissions|length }} hồ sơ</span></div>
+        <div class="card-body">
+          {% if role == "SALES" or role == "ADMIN" %}<p><a class="button button-primary" href="{% url 'create-submission' %}">＋ Tạo hồ sơ mới</a></p>{% endif %}
+          {% if submissions %}<ul class="case-list">
+            {% for s in submissions %}<li class="case"><div><div class="case-name">{{ s.student.full_name }} <span class="status status-{{ s.status|lower }}">{{ s.get_status_display }}</span></div><div class="case-meta">Tạo ngày {{ s.created_at|date:"d/m/Y H:i" }}</div>
+              {% if role == "SALES" or role == "TEACHER" or role == "ADMIN" %}<div class="case-actions"><a href="{% url 'review-submission' s.id %}">{% if role == "SALES" %}Đề xuất / kết quả{% else %}Mở xét duyệt{% endif %}</a>{% for d in s.documents.all %}<a href="{% url 'review-extraction' d.id %}">Rà OCR {{ d.document_type }}</a>{% endfor %}</div>{% endif %}
+              {% if role == "SALES" or role == "ADMIN" %}<form class="upload" method="post" enctype="multipart/form-data" action="{% url 'upload-submission-document' s.id %}">{% csrf_token %}<span class="upload-label">Thêm tài liệu</span><input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" required><input type="hidden" name="document_type" value="OTHER"><button class="button" type="submit">Tải lên</button></form>{% endif %}
+            </div></li>{% endfor %}
+          </ul>{% else %}<p class="empty">Chưa có hồ sơ. Tạo hồ sơ đầu tiên để bắt đầu.</p>{% endif %}
+        </div>
+      </section>
+      <aside class="card"><div class="card-head"><h2>Thông báo</h2><span class="count">{{ notifications|length }} mới nhất</span></div><div class="card-body notifications">
+        {% for n in notifications %}<div class="notice{% if not n.read_at %} unread{% endif %}"><p>{% if not n.read_at %}<strong>{% endif %}{{ n.message }}{% if not n.read_at %}</strong>{% endif %}</p><time>{{ n.created_at|date:"d/m/Y H:i" }}</time>{% if not n.read_at %}<form method="post" action="{% url 'mark-notification-read' n.id %}">{% csrf_token %}<button class="button" type="submit">Đánh dấu đã đọc</button></form>{% endif %}</div>{% empty %}<p class="empty">Chưa có thông báo.</p>{% endfor %}
+      </div></aside>
+    </div>
+  </main>
+</body>
+</html>
